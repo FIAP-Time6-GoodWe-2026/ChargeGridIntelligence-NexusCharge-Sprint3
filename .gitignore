@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+chargegrid.log
+chargegrid.db
+chargegrid_sessoes.csv
+.venv/
