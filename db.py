@@ -47,8 +47,13 @@ CREATE TABLE IF NOT EXISTS transacoes (
     criado_em TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Uma linha por reserva, não por conector (#B49). Com charger_id como
+-- chave primária, reservar o mesmo conector de novo apagava a reserva
+-- anterior — e com ela o sinal retido de quem não compareceu, que sumia do
+-- relatório de receita do posto.
 CREATE TABLE IF NOT EXISTS reservas (
-    charger_id TEXT PRIMARY KEY,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    charger_id TEXT NOT NULL,
     usuario    TEXT NOT NULL,
     criada_em  TEXT NOT NULL,
     expira_em  TEXT NOT NULL,
@@ -79,6 +84,10 @@ CREATE TABLE IF NOT EXISTS sessoes (
 
 CREATE INDEX IF NOT EXISTS idx_transacoes_usuario ON transacoes (usuario, id DESC);
 CREATE INDEX IF NOT EXISTS idx_reservas_status    ON reservas   (status, usuario);
+-- O banco garante o que a regra de negócio promete: no máximo uma reserva
+-- ATIVA por conector, mesmo com dois pedidos simultâneos.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_reservas_ativa
+    ON reservas (charger_id) WHERE status = 'ATIVA';
 """
 
 
@@ -97,7 +106,32 @@ def init() -> None:
     colateral, inclusive nos reloads automáticos do Flask em modo debug.
     """
     with _conn() as conn:
+        _migrar_reservas(conn)
         conn.executescript(SCHEMA)
+
+
+def _migrar_reservas(conn: sqlite3.Connection) -> None:
+    """
+    Converte a tabela `reservas` antiga (charger_id como PK) para o schema com
+    `id` próprio.
+
+    `CREATE TABLE IF NOT EXISTS` não altera tabela existente: sem esta
+    migração, um banco criado antes do #B49 continuaria sobrescrevendo o
+    histórico de reservas em silêncio.
+    """
+    colunas = conn.execute("PRAGMA table_info(reservas)").fetchall()
+    if not colunas or any(c["name"] == "id" for c in colunas):
+        return   # tabela ainda não existe, ou já está no schema novo
+
+    conn.execute("ALTER TABLE reservas RENAME TO reservas_antiga")
+    conn.executescript(SCHEMA)
+    conn.execute(
+        "INSERT INTO reservas (charger_id, usuario, criada_em, expira_em,"
+        " sinal_brl, status)"
+        " SELECT charger_id, usuario, criada_em, expira_em, sinal_brl, status"
+        " FROM reservas_antiga"
+    )
+    conn.execute("DROP TABLE reservas_antiga")
 
 
 def execute(sql: str, params: Iterable[Any] = ()) -> int:

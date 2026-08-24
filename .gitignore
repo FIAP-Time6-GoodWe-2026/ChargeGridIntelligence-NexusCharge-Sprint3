@@ -6,3 +6,4 @@ chargegrid.log
 chargegrid.db
 chargegrid_sessoes.csv
 .venv/
+.impeccable/
