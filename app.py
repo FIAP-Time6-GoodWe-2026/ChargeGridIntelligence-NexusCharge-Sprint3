@@ -174,8 +174,10 @@ class _PostoSM:
         return len(self.list_active())
 
     def occupancy_ratio(self) -> float:
-        total = len(self.list_chargers())
-        return self.active_count() / max(total, 1)
+        # Conectores ocupados, não sessões ativas — ver SessionManager (#B44).
+        chargers = self.list_chargers()
+        ocupados = sum(1 for sid in chargers.values() if sid is not None)
+        return ocupados / max(len(chargers), 1)
 
     def get_session(self, session_id):
         return self._sm.get_session(session_id)
@@ -346,6 +348,13 @@ def _atualizar_carregadores_livres() -> None:
         posto["carregadores_livres"] = livres
         posto["disponivel"] = livres > 0
         posto["reservados"] = len(reservados)
+        # #B47 — "ocupados" precisa ser contado, não deduzido de
+        # total − livres: essa subtração jogava os reservados no balde de
+        # ocupados e o topo da página contradizia os cards logo abaixo.
+        posto["ocupados"] = sum(
+            1 for cid, sid in chargers.items()
+            if cid.startswith(posto_id) and sid is not None
+        )
 
         # Conector VIP (C5) disponível? Usado pelo filtro "Assinantes" no mapa.
         cid_vip = f"{posto_id}-{CONECTOR_VIP}"
@@ -550,7 +559,11 @@ def posto(posto_id: str):
             "status":        status,
             "tipo":          "assinante" if num == "C5" else "publico",
             "usuario_atual": session.user_name if session else None,
-            "tempo_restante": (
+            # #B48 — este número é tempo DECORRIDO, não tempo restante: o
+            # sistema não sabe quando o motorista vai desplugar. O rótulo no
+            # template dizia "Disponível em" e prometia o que não podia
+            # cumprir.
+            "tempo_em_uso": (
                 f"{int(session.duration_minutes)} min"
                 if session else None
             ),
@@ -761,7 +774,12 @@ def dashboard():
             sm.accrue_energy(s.session_id)
 
     ativas = sm.list_active()
-    disponíveis = sm.available_chargers()
+    # #B46 — o painel do operador não pode oferecer conector reservado: o
+    # sinal já foi debitado de alguém, e iniciar uma sessão de terceiro ali
+    # retinha os R$ 10 como se o dono da reserva não tivesse aparecido.
+    reservados_agora = {r.charger_id for r in reservations.todas_ativas()}
+    disponíveis = [c for c in sm.available_chargers()
+                   if c not in reservados_agora]
 
     tariff_table_rows = []
     for ut in UserType:
@@ -902,6 +920,19 @@ def dashboard_nova_sessao():
             flash(
                 "O conector C5 é exclusivo para assinantes. "
                 "Usuários Padrão e Corporativo devem usar os conectores C1 a C4.",
+                "error",
+            )
+            return redirect(url_for("dashboard"))
+
+        # #B46 — mesma guarda do fluxo do motorista: iniciar sessão em cima
+        # de uma reserva paga faria o dono dela perder o sinal sem ter
+        # deixado de comparecer.
+        reserva = reservations.ativa_do_conector(charger_id)
+        if reserva:
+            flash(
+                f"O conector {charger_id} está reservado por {reserva.usuario} "
+                f"até {reserva.expira_em.strftime('%H:%M')}. "
+                f"Cancele a reserva antes de iniciar outra sessão.",
                 "error",
             )
             return redirect(url_for("dashboard"))
@@ -1079,9 +1110,16 @@ def relatorio_consolidado():
 
     # #B35 — separa receita realizada (sessões encerradas, custo final) de
     # receita projetada (sessões ativas, custo parcial que ainda cresce).
+    # #B45 — "realizada" passou a exigir pagamento confirmado. Encerrada não
+    # é sinônimo de paga desde que o motorista pode fechar a aba na tela de
+    # pagamento (#B41): esse dinheiro é pendente, não receita, e contá-lo aqui
+    # fazia este relatório divergir para sempre do KPI do /admin.
     encerradas = [s for s in todas if not s.is_active]
     ativas_lst = [s for s in todas if s.is_active]
-    receita_realizada = round(sum(s.total_cost_brl for s in encerradas), 2)
+    pagas      = [s for s in encerradas if _sessao_arquivada(s.session_id)]
+    pendentes  = [s for s in encerradas if s not in pagas]
+    receita_realizada = round(sum(s.total_cost_brl for s in pagas), 2)
+    receita_pendente  = round(sum(s.total_cost_brl for s in pendentes), 2)
     receita_projetada = round(sum(s.total_cost_brl for s in ativas_lst), 2)
 
     # 'decisoes' soma o histórico dos 3 PowerManagers (antes só contava P1).
@@ -1092,8 +1130,10 @@ def relatorio_consolidado():
         "ativas":             sm.active_count(),
         "energia":            round(sum(s.energy_kwh for s in todas), 3),
         # 'receita' mantida para compatibilidade com o template = total geral
-        "receita":            round(receita_realizada + receita_projetada, 2),
+        "receita":            round(receita_realizada + receita_pendente
+                                    + receita_projetada, 2),
         "receita_realizada":  receita_realizada,
+        "receita_pendente":   receita_pendente,
         "receita_projetada":  receita_projetada,
         "frames":             mb.frame_count(),
         "decisoes":           total_decisoes,

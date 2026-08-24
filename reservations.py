@@ -196,7 +196,7 @@ def criar(usuario: str, charger_id: str) -> Reserva:
     )
 
     db.execute(
-        "INSERT OR REPLACE INTO reservas "
+        "INSERT INTO reservas "
         "(charger_id, usuario, criada_em, expira_em, sinal_brl, status) "
         "VALUES (?,?,?,?,?,?)",
         (charger_id, usuario, agora.strftime(FMT), expira.strftime(FMT),
@@ -222,8 +222,8 @@ def cancelar(usuario: str, charger_id: str) -> float:
     if reserva is None or reserva.usuario != usuario:
         raise ValueError("Reserva não encontrada.")
 
-    db.execute("UPDATE reservas SET status = ? WHERE charger_id = ?",
-               (STATUS_CANCELADA, charger_id))
+    db.execute("UPDATE reservas SET status = ? WHERE charger_id = ? AND status = ?",
+               (STATUS_CANCELADA, charger_id, STATUS_ATIVA))
     wallet.creditar(usuario, reserva.sinal_brl, "ESTORNO",
                     f"Estorno de reserva · {charger_id}")
     logger.info("Reserva cancelada e estornada: %s (%s)", charger_id, usuario)
@@ -244,8 +244,8 @@ def consumir(usuario: str, charger_id: str) -> float:
     if reserva is None or reserva.usuario != usuario:
         return 0.0
 
-    db.execute("UPDATE reservas SET status = ? WHERE charger_id = ?",
-               (STATUS_USADA, charger_id))
+    db.execute("UPDATE reservas SET status = ? WHERE charger_id = ? AND status = ?",
+               (STATUS_USADA, charger_id, STATUS_ATIVA))
     logger.info("Reserva honrada: %s (%s) — R$ %.2f viram crédito.",
                 charger_id, usuario, reserva.sinal_brl)
     return reserva.sinal_brl
@@ -261,7 +261,7 @@ def sinal_creditado(usuario: str, charger_id: str) -> float:
     """
     linha = db.query_one(
         "SELECT sinal_brl FROM reservas WHERE charger_id = ? AND usuario = ? "
-        "AND status = ? ORDER BY rowid DESC",
+        "AND status = ? ORDER BY id DESC",
         (charger_id, usuario, STATUS_USADA),
     )
     return round(linha["sinal_brl"], 2) if linha else 0.0
@@ -305,8 +305,8 @@ if __name__ == "__main__":
 
     # Expiração: força o vencimento e confere que não há estorno
     criar("amanda", "P1-C1")
-    db.execute("UPDATE reservas SET expira_em = ? WHERE charger_id = ?",
-               ("2020-01-01 00:00:00", "P1-C1"))
+    db.execute("UPDATE reservas SET expira_em = ? WHERE charger_id = ? AND status = ?",
+               ("2020-01-01 00:00:00", "P1-C1", STATUS_ATIVA))
     assert expirar_vencidas() == 1
     assert ativa_do_conector("P1-C1") is None
     assert wallet.saldo("amanda") == 80.0, "expiração retém o sinal"

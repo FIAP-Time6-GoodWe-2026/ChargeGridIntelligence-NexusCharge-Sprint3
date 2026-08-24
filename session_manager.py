@@ -411,12 +411,20 @@ class SessionManager:
         Taxa de ocupação da rede [0.0, 1.0].
         Usada pela PricingEngine para o eixo de tarifação por demanda.
 
+        Conta CONECTORES ocupados, não sessões ativas (#B44). Desde que uma
+        recarga encerrada segura o conector até o pagamento, os dois números
+        divergem: com 3 carros carregando e 1 conector retido esperando
+        pagamento, 4 de 5 vagas estão indisponíveis, mas só 3 sessões estão
+        ativas. Contar sessões subestimava a demanda, barateava a tarifa e
+        contradizia o "1 disponível" que a tela do posto mostrava.
+
         Deriva do total real de conectores cadastrados no sistema em vez
         de um valor hardcoded — se MAX_CHARGERS_PER_STATION ou o range
         de postos mudar, a ocupação continua correta automaticamente.
         """
         total = len(self._chargers)
-        return self.active_count() / max(total, 1)
+        ocupados = sum(1 for sid in self._chargers.values() if sid is not None)
+        return ocupados / max(total, 1)
 
     # ------------------------------------------------------------------
     # Helpers privados

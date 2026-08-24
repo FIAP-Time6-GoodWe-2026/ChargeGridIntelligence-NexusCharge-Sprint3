@@ -310,6 +310,56 @@ class TestPowerManagerRebalance:
         rb = pm.rebalance()
         assert rb is None
 
+    # ---- B43: sobra de quem satura tem que ir para os outros -------------
+    def test_prioridade_nao_deixa_potencia_ociosa(self, sm, pm, pe, chargers):
+        """
+        Com um padrão e dois assinantes em 33 kW, os três cabem a 11 kW.
+
+        A fatia por peso do assinante daria 11.65 kW; ele só usa 11.0 e a
+        sobra tem que ir para o padrão. Antes ela era descartada e o padrão
+        travava em 9.71 kW com 1.29 kW livres no posto (regressão B43).
+        """
+        from models import UserType, SessionStatus
+        sessoes = [
+            _start(sm, pm, pe, chargers[0], UserType.STANDARD)[0],
+            _start(sm, pm, pe, chargers[1], UserType.SUBSCRIBER)[0],
+            _start(sm, pm, pe, chargers[2], UserType.SUBSCRIBER)[0],
+            _start(sm, pm, pe, chargers[3], UserType.STANDARD)[0],
+        ]
+        sm.finish_session(sessoes[3].session_id)
+        pm.rebalance()
+
+        assert sm.total_allocated_power_kw() == 33.0, (
+            "posto ficou abaixo do limite com capacidade sobrando"
+        )
+        for s in sm.list_active():
+            assert s.allocated_power_kw == 11.0, (
+                f"{s.charger_id} ({s.user_type.name}) em "
+                f"{s.allocated_power_kw} kW — cabia 11.0"
+            )
+            assert s.status == SessionStatus.CHARGING
+
+    def test_prioridade_so_vale_quando_falta_potencia(self, sm, pm, pe, chargers):
+        """Com folga no posto, assinante e padrão recebem o mesmo: o que pediram."""
+        from models import UserType
+        _start(sm, pm, pe, chargers[0], UserType.STANDARD)
+        _start(sm, pm, pe, chargers[1], UserType.SUBSCRIBER)
+        potencias = {s.user_type.name: s.allocated_power_kw
+                     for s in sm.list_active()}
+        assert potencias["STANDARD"] == potencias["SUBSCRIBER"] == 11.0
+
+    def test_prioridade_vale_quando_o_posto_lota(self, sm, pm, pe, chargers):
+        """Estourando o limite, o assinante fica com a fatia maior."""
+        from models import UserType
+        for i in range(4):
+            tipo = UserType.SUBSCRIBER if i == 1 else UserType.STANDARD
+            _start(sm, pm, pe, chargers[i], tipo)
+        por_tipo = {}
+        for s in sm.list_active():
+            por_tipo.setdefault(s.user_type.name, []).append(s.allocated_power_kw)
+        assert por_tipo["SUBSCRIBER"][0] > max(por_tipo["STANDARD"])
+        assert sm.total_allocated_power_kw() <= 33.0
+
     def test_rebalance_severity_ok(self, sm, pe, chargers):
         """Severity do rebalanceamento deve ser 'ok'."""
         from models import UserType
@@ -768,8 +818,15 @@ class TestAuditoriaModbusFlask:
         r = c.get("/relatorio")
         assert r.status_code == 200
         html = r.data.decode()
-        assert "Realizada" in html and "Projetada" in html, (
-            "Relatório não distingue receita realizada de projetada (regressão B35)"
+        assert "Paga" in html and "Em curso" in html, (
+            "Relatório não distingue receita paga de receita em curso "
+            "(regressão B35)"
+        )
+        # #B45 — a sessão encerrada acima não foi paga: o valor dela é
+        # pendente, não receita realizada.
+        assert "A receber" in html, (
+            "Sessão encerrada sem pagamento tem que aparecer como pendente, "
+            "não como receita paga (regressão B45)"
         )
 
 
@@ -1382,6 +1439,131 @@ class TestPagamento:
         r = client.get("/admin/export.csv")
         assert r.status_code == 200
         assert s.session_id in r.data.decode("utf-8-sig")
+
+
+# ===========================================================================
+# SPRINT 3 — Coerência entre o que o sistema faz e o que ele mostra
+# (B44 a B49: números e rótulos que divergiam do estado real)
+# ===========================================================================
+
+class TestCoerenciaDeEstado:
+
+    # ---- B44: ocupação conta conectores, não sessões ---------------------
+    def test_ocupacao_conta_conector_retido_por_pagamento(self, client_usuario):
+        """
+        Recarga encerrada e não paga segura o conector; a tarifa de demanda
+        e o painel precisam enxergar essa vaga como ocupada.
+        """
+        import app as A
+        from models import UserType
+        s = A.sm.create_session("P2-C1", "ABC1D23", "Amanda", UserType.SUBSCRIBER,
+                                11.0, owner="amanda")
+        A.sm.start_charging(s.session_id, 11.0, 1.0)
+        ocupacao_carregando = A.sm.occupancy_ratio()
+
+        client_usuario.post(f"/sessao/{s.session_id}/encerrar")
+
+        assert A.sm.occupancy_ratio() == ocupacao_carregando, (
+            "conector retido para pagamento sumiu da ocupação (regressão B44)"
+        )
+        client_usuario.post(f"/pagamento/{s.session_id}/confirmar",
+                            data={"metodo": "NEXUSCOIN"})
+        assert A.sm.occupancy_ratio() < ocupacao_carregando, (
+            "depois de pago, o conector volta a contar como livre"
+        )
+
+    # ---- B46: painel do operador e reservas ------------------------------
+    def test_painel_nao_oferece_conector_reservado(self, client):
+        import app as A
+        import reservations
+        A.wallet.garantir_conta("amanda", 100.0)
+        reservations.criar("amanda", "P2-C2")
+
+        r = client.get("/dashboard")
+        assert r.status_code == 200
+        html = r.data.decode()
+        select = html.split('name="charger_id"')[1].split("</select>")[0]
+        assert "P2-C2" not in select, (
+            "conector reservado não pode ser oferecido no painel (regressão B46)"
+        )
+
+    def test_painel_recusa_sessao_em_conector_reservado(self, client):
+        import app as A
+        import reservations
+        A.wallet.garantir_conta("amanda", 100.0)
+        reservations.criar("amanda", "P2-C2")
+
+        client.post("/dashboard/nova-sessao", data={
+            "charger_id": "P2-C2", "vehicle_id": "ZZZ9Z99",
+            "user_type": "P", "hora": "10", "potencia": "11.0",
+        })
+        assert A.sm.is_charger_available("P2-C2"), (
+            "sessão criada em cima de reserva paga faria o dono perder o sinal"
+        )
+        assert reservations.ativa_do_conector("P2-C2") is not None
+
+    # ---- B47: 'ocupados' não engole os reservados ------------------------
+    def test_reservado_nao_conta_como_ocupado(self, client_usuario):
+        import app as A
+        import reservations
+        reservations.criar("amanda", "P2-C2")
+        A._atualizar_carregadores_livres()
+        posto = A.POSTOS["P2"]
+
+        assert posto["ocupados"] == 0
+        assert posto["reservados"] == 1
+        assert (posto["carregadores_livres"] + posto["ocupados"]
+                + posto["reservados"]) == posto["total_carregadores"]
+
+    # ---- B48: rótulo do tempo do conector ocupado ------------------------
+    def test_posto_nao_promete_hora_de_liberacao(self, client_usuario):
+        import app as A
+        from models import UserType
+        s = A.sm.create_session("P2-C1", "ABC1D23", "Amanda", UserType.SUBSCRIBER,
+                                11.0, owner="amanda")
+        A.sm.start_charging(s.session_id, 11.0, 1.0)
+
+        html = client_usuario.get("/posto/P2").data.decode()
+        assert "Disponível em" not in html, (
+            "o sistema não sabe quando o motorista despluga; o número exibido "
+            "é tempo decorrido (regressão B48)"
+        )
+        assert "Em uso há" in html
+
+    # ---- B49: sinal retido não pode sumir do relatório -------------------
+    def test_sinal_retido_sobrevive_a_nova_reserva_no_mesmo_conector(self):
+        import db, wallet
+        import reservations as rv
+        wallet.garantir_conta("amanda", 100.0)
+        wallet.garantir_conta("allan", 100.0)
+
+        rv.criar("amanda", "P1-C3")
+        db.execute(
+            "UPDATE reservas SET expira_em = ? WHERE charger_id = ? AND status = ?",
+            ("2020-01-01 00:00:00", "P1-C3", rv.STATUS_ATIVA),
+        )
+        rv.expirar_vencidas()
+        assert rv.receita_retida() == 10.0
+
+        rv.criar("allan", "P1-C3")
+        assert rv.receita_retida() == 10.0, (
+            "reservar o mesmo conector apagou o sinal retido do no-show "
+            "anterior (regressão B49)"
+        )
+        assert rv.ativa_do_conector("P1-C3").usuario == "allan"
+
+    def test_banco_impede_duas_reservas_ativas_no_mesmo_conector(self):
+        import db, wallet
+        import reservations as rv
+        wallet.garantir_conta("amanda", 100.0)
+        rv.criar("amanda", "P1-C4")
+        with pytest.raises(Exception):
+            db.execute(
+                "INSERT INTO reservas (charger_id, usuario, criada_em,"
+                " expira_em, sinal_brl, status) VALUES (?,?,?,?,?,?)",
+                ("P1-C4", "allan", "2030-01-01 00:00:00",
+                 "2030-01-01 00:15:00", 10.0, rv.STATUS_ATIVA),
+            )
 
 
 # ===========================================================================

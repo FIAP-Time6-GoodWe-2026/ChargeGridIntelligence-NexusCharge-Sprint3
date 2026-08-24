@@ -29,6 +29,7 @@ Sprint 3+:
 """
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Protocol, runtime_checkable
 
@@ -199,7 +200,7 @@ class PowerManager:
                excede o limite da instalação, a nova sessão é RECUSADA —
                conectar mais um conector causaria subdivisão abaixo do mínimo
                operacional do HCA (4.2 kW trifásico), o que desligaria o hardware.
-            1. Se carga atual + solicitada ≤ 90% do limite → concede integral.
+            1. Se carga atual + solicitada ≤ limite → concede integral.
             2. Se cabe dentro do limite mas passa o limiar → concede e redistribui.
             3. Se não cabe → redistribui todas à potência equânime e concede.
 
@@ -471,6 +472,21 @@ class PowerManager:
         limite e tornaria a fatia da nova sessão maior que a das existentes
         (#B1/#B2). A fatia bruta é apenas clipada pelo solicitado e pelo piso.
 
+        Sobra de quem satura é redistribuída (#B43)
+        ------------------------------------------
+        Quem tem peso alto pode receber uma fatia maior do que pediu — um
+        assinante com fatia de 11.6 kW só consegue usar 11.0 kW. Antes essa
+        sobra era simplesmente descartada no `min(fatia, solicitado)`, e o
+        posto ficava abaixo do limite com sessões ainda em throttle: em
+        33 kW com um padrão e dois assinantes, o padrão travava em 9.71 kW
+        enquanto 1.29 kW sobravam sem dono.
+
+        A repartição virou preenchimento por níveis: quem satura no que pediu
+        é fixado e sai da conta, e o que sobrou é repartido de novo entre os
+        demais na proporção dos pesos, até ninguém mais saturar. A prioridade
+        continua valendo (quem pesa mais satura primeiro), mas nenhum quilowatt
+        é jogado fora.
+
         Args:
             sessions : sessões entre as quais repartir
             total_kw : potência total a distribuir
@@ -482,14 +498,38 @@ class PowerManager:
             return {}
         pesos = {s.session_id: PESO_USUARIO.get(s.user_type.name, 1.0)
                  for s in sessions}
-        soma = sum(pesos.values())
+
         alvos: Dict[str, float] = {}
-        for s in sessions:
-            proporcao = pesos[s.session_id] / soma if soma else 1.0 / len(sessions)
-            fatia = total_kw * proporcao
-            fatia = min(fatia, s.requested_power_kw)
-            fatia = max(fatia, POTENCIA_MINIMA_KW)
-            alvos[s.session_id] = round(fatia, 2)
+        pendentes = list(sessions)
+        restante  = total_kw
+
+        while pendentes:
+            soma = sum(pesos[s.session_id] for s in pendentes)
+            fatias = {
+                s.session_id: (restante * pesos[s.session_id] / soma
+                               if soma else restante / len(pendentes))
+                for s in pendentes
+            }
+            saturadas = [s for s in pendentes
+                         if fatias[s.session_id] >= s.requested_power_kw]
+
+            if not saturadas:
+                # Ninguém estoura o que pediu: a repartição atual é final.
+                # Arredonda para BAIXO: `round` a 2 casas em 4 fatias de
+                # 7.857 kW devolvia 33.01 kW num posto de 33 kW — o disjuntor
+                # não perdoa 10 W a mais só porque a conta arredondou.
+                for s in pendentes:
+                    alvos[s.session_id] = max(
+                        math.floor(fatias[s.session_id] * 100) / 100,
+                        POTENCIA_MINIMA_KW,
+                    )
+                break
+
+            for s in saturadas:
+                alvos[s.session_id] = round(s.requested_power_kw, 2)
+                restante -= s.requested_power_kw
+                pendentes.remove(s)
+
         return alvos
 
     def _redistribute_to(
