@@ -7,7 +7,7 @@
 /* ====================================================================
    LAYOUT
    ==================================================================== */
-.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container { max-width: var(--rail); margin: 0 auto; padding: var(--sp-5) var(--sp-4); }
 
 /* ====================================================================
    RESUMO DO POSTO
@@ -29,7 +29,7 @@
 .stat-icon {
     width: 40px; height: 40px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0; transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+    flex-shrink: 0; transition: transform 0.2s var(--ease);
 }
 .stat-icon svg { width: 20px; height: 20px; }
 
@@ -81,6 +81,11 @@
     border: 2px solid var(--cor-borda);
     position: relative;
     overflow: hidden;
+    /* Coluna flex para que a área de ação possa ser empurrada ao rodapé:
+       o conteúdo acima varia (nome do motorista, pill de throttle, linhas
+       extras) e sem isto os botões ficam em alturas diferentes. */
+    display: flex;
+    flex-direction: column;
     /* Entrada com stagger */
     opacity: 0;
     animation: cardEnter 0.38s ease forwards;
@@ -186,7 +191,19 @@
 .charger-card:hover .info-label svg { transform: scale(1.15); }
 
 /* Ação */
-.charger-action { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--cor-borda); }
+/* `margin-top: auto` ancora o bloco de ação no rodapé do card; como a grade
+   estica todos os cards à mesma altura, os botões passam a ficar na mesma
+   linha independentemente do que vem acima deles. */
+.charger-action {
+    margin-top: auto; padding-top: 16px;
+    border-top: 1px solid var(--cor-borda);
+    /* Altura reservada = a do card mais alto (dois botões empilhados). Com o
+       bloco ancorado no rodapé e todos com a mesma altura, o botão principal
+       de cada card cai exatamente na mesma linha, tenha ele nota embaixo,
+       um segundo botão ou nada. */
+    min-height: 104px;
+    display: flex; flex-direction: column;
+}
 
 .btn-action {
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -213,6 +230,33 @@
    ==================================================================== */
 
 /* ====================================================================
+   SPRINT 3 — de quem é esta recarga
+   =========================================================== */
+.minha-pill, .outro-pill {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-bold);
+    padding: 2px var(--sp-2);
+    border-radius: var(--r-pill);
+    margin-top: var(--sp-1);
+    white-space: nowrap;
+}
+.minha-pill {
+    background: var(--cor-info-bg);
+    color: var(--cor-info-texto);
+}
+.outro-pill {
+    background: var(--cor-superficie-2);
+    color: var(--cor-texto-secundario);
+    border: 1px solid var(--cor-borda);
+    font-weight: var(--fw-semibold);
+}
+
+/* O card da própria recarga ganha a borda de destaque: é o que o usuário
+   procura ao chegar no posto. */
+.charger-card.minha { border-color: var(--cor-info); }
+
+/* ===========================================================
    SPRINT 3 — encerrar a própria recarga direto no card
    =========================================================== */
 .form-encerrar { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -233,6 +277,9 @@
     color: var(--cor-texto-secundario);
     text-align: center;
     font-variant-numeric: tabular-nums;
+    /* Duas linhas reservadas: a nota tem 1 ou 2 linhas conforme o texto, e
+       como o bloco é ancorado no rodapé isso deslocaria o botão. */
+    min-height: 2.6em;
 }
 
 /* ===========================================================
@@ -284,6 +331,19 @@
     background: rgba(37,99,235,0.12);
 }
 .charger-card.reservado .charger-icon-box svg { stroke: var(--cor-info-texto); }
+
+/* Encerrada e não paga: a vaga continua presa até o pagamento (#B41). */
+.charger-card.aguardando {
+    border-color: var(--cor-aviso) !important;
+    background: var(--cor-aviso-bg) !important;
+}
+.status-badge.aguardando {
+    background: rgba(245,158,11,0.14);
+    color: var(--cor-vip-texto);
+}
+.status-badge.aguardando svg { fill: var(--cor-vip-texto); }
+.charger-card.aguardando .charger-icon-box { background: rgba(245,158,11,0.14); }
+.charger-card.aguardando .charger-icon-box svg { stroke: var(--cor-vip-texto); }
 
 /* Countdown */
 .actions-reservado { display: flex; flex-direction: column; gap: 10px; }
@@ -568,7 +628,7 @@
         {% endif %}
 
         {% for id, carregador in carregadores.items() %}
-        <div class="charger-card {{ carregador.status }} {% if carregador.tipo == 'assinante' %}vip{% endif %} {% if carregador.em_throttle %}throttle{% endif %}">
+        <div class="charger-card {{ carregador.status }} {% if carregador.tipo == 'assinante' %}vip{% endif %} {% if carregador.em_throttle %}throttle{% endif %} {% if carregador.minha_sessao %}minha{% endif %}">
 
             {% if carregador.tipo == 'assinante' %}
             <div class="vip-badge">
@@ -590,8 +650,36 @@
                         <div class="charger-name">{{ carregador.nome }}</div>
                         <div class="status-badge {{ carregador.status }}">
                             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>
-                            {% if carregador.status == 'livre' %}Disponível{% else %}Em uso{% endif %}
+                            {% if carregador.status == 'livre' %}Disponível
+                            {% elif carregador.status == 'reservado' %}Reservado
+                            {% elif carregador.status == 'aguardando' %}A pagar
+                            {% else %}Em uso{% endif %}
                         </div>
+
+                        {# Sem esta marca, a única diferença entre a recarga do
+                           usuário e a de outra pessoa é o botão lá embaixo —
+                           tarde demais para quem está procurando a própria. #}
+                        {% if carregador.minha_sessao %}
+                        <div class="minha-pill">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.5" width="10" height="10"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            Sua recarga
+                        </div>
+                        {% elif carregador.status in ('ocupado', 'aguardando') %}
+                        <div class="outro-pill">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.5" width="10" height="10"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            {% if session.get('staff') and carregador.usuario_atual
+                                %}{{ carregador.usuario_atual }}{% else %}Outro usuário{% endif %}
+                        </div>
+                        {% endif %}
                         {% if carregador.em_throttle %}
                         <div class="throttle-pill">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="10" height="10" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -750,6 +838,55 @@
                     </button>
                     {% endif %}
 
+                {% elif carregador.aguardando %}
+
+                    {# -- Encerrada, ainda não paga: o conector segue ocupado.
+                       Sair sem pagar não devolve a vaga (#B41). -------------- #}
+                    {% if carregador.pode_pagar %}
+                    <form method="GET"
+                          action="{{ url_for('pagamento', session_id=carregador.session_id) }}"
+                          class="form-encerrar">
+                        <button type="submit" class="btn-action encerrar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                                <line x1="2" y1="10" x2="22" y2="10"/>
+                            </svg>
+                            Pagar e liberar
+                        </button>
+                        <span class="encerrar-nota">
+                            {% if carregador.custo_brl %}
+                            Total: R$ {{ carregador.custo_brl | brl }} · a vaga
+                            só é liberada após o pagamento
+                            {% else %}
+                            A vaga só é liberada após o pagamento
+                            {% endif %}
+                        </span>
+                    </form>
+                    {% elif carregador.pode_liberar %}
+                    <form method="POST"
+                          action="{{ url_for('liberar_conector', session_id=carregador.session_id) }}"
+                          class="form-encerrar">
+                        <button type="submit" class="btn-action encerrar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                            </svg>
+                            Liberar conector
+                        </button>
+                        <span class="encerrar-nota">
+                            Recarga encerrada sem pagamento · R$
+                            {{ carregador.custo_brl | brl }} pendentes
+                        </span>
+                    </form>
+                    {% else %}
+                    <button class="btn-action ocupado" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Aguardando pagamento
+                    </button>
+                    {% endif %}
+
                 {% elif carregador.pode_encerrar %}
 
                     {# -- Sessão do próprio usuário (ou operador): encerrar -- #}
@@ -760,13 +897,19 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="6" y="6" width="12" height="12" rx="2"/>
                             </svg>
-                            Encerrar carregamento
+                            {% if carregador.minha_sessao %}Encerrar carregamento
+                            {% else %}Encerrar e liberar{% endif %}
                         </button>
                         <span class="encerrar-nota">
-                            {% if carregador.custo_brl %}
-                            Parcial: R$ {{ carregador.custo_brl | brl }} · segue para pagamento
+                            {% if carregador.minha_sessao %}
+                                {% if carregador.custo_brl %}
+                                Parcial: R$ {{ carregador.custo_brl | brl }} · segue para pagamento
+                                {% else %}
+                                Segue para a tela de pagamento
+                                {% endif %}
                             {% else %}
-                            Segue para a tela de pagamento
+                            Operação do posto · R$ {{ carregador.custo_brl | brl }}
+                            ficam pendentes para o motorista
                             {% endif %}
                         </span>
                     </form>
@@ -866,7 +1009,7 @@
 /* ====================================================================
    RESERVA DE CARREGADOR — ChargeGrid Intelligence · Sprint 1
    Estado gerenciado no cliente (sem persistência).
-   Sprint 2: substituir confirmarReserva() por fetch('/api/reservar', ...).
+   Sprint 3: o estado da reserva passou a viver no servidor (ver reservations.py).
    ==================================================================== */
 
 var DURACAO_RESERVA_SEG = 15 * 60;  // 15 minutos
