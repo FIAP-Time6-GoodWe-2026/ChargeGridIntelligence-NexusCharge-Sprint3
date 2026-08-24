@@ -1,6 +1,6 @@
 # =============================================================================
 #  ChargeGrid Intelligence — Simulador de Protocolo Modbus TCP
-#  Sprint 2 | FIAP + GoodWe EV Challenge 2026
+#  Sprint 3 | FIAP + GoodWe EV Challenge 2026
 # =============================================================================
 
 """

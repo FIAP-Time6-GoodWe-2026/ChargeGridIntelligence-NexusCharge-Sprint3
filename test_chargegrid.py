@@ -1315,6 +1315,64 @@ class TestPagamento:
         linha = A._sessao_arquivada(s.session_id)
         assert linha["sinal_abatido"] == 10.0
 
+    # ---- B41: encerrar sem pagar não devolve a vaga ----------------------
+    def test_encerrar_sem_pagar_mantem_o_conector_ocupado(self, client_usuario):
+        import app as A
+        s = self._sessao_de(A, charger="P2-C1")
+        client_usuario.post(f"/sessao/{s.session_id}/encerrar")
+
+        assert A.sm.list_chargers()["P2-C1"] == s.session_id, \
+            "conector liberado sem pagamento (regressão B41)"
+        assert not A.sm.is_charger_available("P2-C1")
+
+    def test_pagamento_libera_o_conector(self, client_usuario):
+        import app as A
+        s = self._sessao_de(A, charger="P2-C1")
+        client_usuario.post(f"/sessao/{s.session_id}/encerrar")
+        client_usuario.post(f"/pagamento/{s.session_id}/confirmar",
+                            data={"metodo": "NEXUSCOIN"})
+
+        assert A.sm.is_charger_available("P2-C1"), \
+            "conector deveria voltar à fila depois do pagamento"
+
+    def test_pendencia_aparece_para_o_dono_da_sessao(self, client_usuario):
+        import app as A
+        s = self._sessao_de(A, charger="P2-C1")
+        client_usuario.post(f"/sessao/{s.session_id}/encerrar")
+
+        r = client_usuario.get("/")
+        assert b"Pagar agora" in r.data, \
+            "sem faixa de pendência o débito fica sem caminho de volta"
+        assert A._pendencia_do_usuario("amanda").session_id == s.session_id
+
+    # ---- B42: operador libera pelo posto, sem passar pelo caixa ----------
+    def test_staff_encerrando_sessao_alheia_libera_sem_pagamento(self, client):
+        import app as A
+        s = self._sessao_de(A, owner="amanda", charger="P2-C1")
+        r = client.post(f"/sessao/{s.session_id}/encerrar")
+
+        assert "/pagamento/" not in r.headers["Location"], \
+            "dono do posto não pode ser mandado para o caixa (regressão B42)"
+        assert f"/posto/{s.station_id}" in r.headers["Location"]
+        assert A.sm.is_charger_available("P2-C1")
+
+    def test_staff_libera_conector_retido(self, client):
+        import app as A
+        s = self._sessao_de(A, owner="amanda", charger="P2-C1")
+        A.sm.finish_session(s.session_id, liberar=False)
+
+        client.post(f"/sessao/{s.session_id}/liberar")
+        assert A.sm.is_charger_available("P2-C1")
+
+    def test_usuario_comum_nao_libera_conector(self, client_usuario):
+        import app as A
+        s = self._sessao_de(A, owner="allan", charger="P2-C1")
+        A.sm.finish_session(s.session_id, liberar=False)
+
+        client_usuario.post(f"/sessao/{s.session_id}/liberar")
+        assert not A.sm.is_charger_available("P2-C1"), \
+            "liberar conector é rota de operação, restrita ao staff"
+
     def test_export_csv_traz_a_sessao_paga(self, client):
         """O CSV é a base das análises estatísticas da Sprint 3."""
         import app as A

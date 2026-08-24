@@ -1,6 +1,6 @@
 # =============================================================================
 #  ChargeGrid Intelligence — Gerenciador de Potência
-#  Sprint 2 | FIAP + GoodWe EV Challenge 2026
+#  Sprint 3 | FIAP + GoodWe EV Challenge 2026
 # =============================================================================
 
 """
