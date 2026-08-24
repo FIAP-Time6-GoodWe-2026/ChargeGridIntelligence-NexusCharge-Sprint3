@@ -39,6 +39,8 @@
 .stat-icon.ocupado svg { stroke: #EF4444; }
 .stat-icon.power    { background: var(--cor-info-bg); }
 .stat-icon.power svg{ stroke: var(--cor-info-texto); }
+.stat-icon.reservado    { background: var(--cor-aviso-bg); }
+.stat-icon.reservado svg{ stroke: var(--cor-vip-texto); }
 
 [data-theme="dark"] .stat-icon.livre   { background: rgba(16,185,129,0.18); }
 [data-theme="dark"] .stat-icon.ocupado { background: rgba(239,68,68,0.18);  }
@@ -588,10 +590,28 @@
                 </svg>
             </div>
             <div class="stat-info">
-                <div class="stat-value">{{ posto.total_carregadores - posto.carregadores_livres }}</div>
+                <div class="stat-value">{{ posto.ocupados }}</div>
                 <div class="stat-label">Ocupados</div>
             </div>
         </div>
+
+        {# Sem esta terceira caixa, disponíveis + ocupados não fecha o total e
+           o reservado vira um conector sumido. #}
+        {% if posto.reservados %}
+        <div class="stat-item">
+            <div class="stat-icon reservado">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+            </div>
+            <div class="stat-info">
+                <div class="stat-value">{{ posto.reservados }}</div>
+                <div class="stat-label">Reservados</div>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="stat-item">
             <div class="stat-icon power">
@@ -728,15 +748,15 @@
                     </div>
                 </div>
                 {% endif %}
-                {% if carregador.status == 'ocupado' and carregador.tempo_restante %}
+                {% if carregador.status == 'ocupado' and carregador.tempo_em_uso %}
                 <div class="info-row">
                     <div class="info-label">
                         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                         </svg>
-                        Disponível em
+                        Em uso há
                     </div>
-                    <div class="info-value">{{ carregador.tempo_restante }}</div>
+                    <div class="info-value">{{ carregador.tempo_em_uso }}</div>
                 </div>
                 {% endif %}
             </div>
