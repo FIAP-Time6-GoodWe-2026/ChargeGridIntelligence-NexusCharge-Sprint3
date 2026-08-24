@@ -79,7 +79,7 @@ input:not(:focus):hover, select:not(:focus):hover {
    ==================================================================== */
 .warning-box {
     background: var(--cor-aviso-bg);
-    border-left: 4px solid var(--cor-aviso);
+    border: 1px solid var(--cor-aviso);
     padding: 16px;
     border-radius: 8px;
     margin: 20px 0;
@@ -403,6 +403,9 @@ input:not(:focus):hover, select:not(:focus):hover {
     border-radius: 99px;
     background: linear-gradient(90deg, var(--cor-primaria), #FF6B6B);
     width: 0%;
+    /* ponytail: anima width porque o gradiente da barra depende da largura
+       real; sao 5 medidores atualizados a cada 5 s, o reflow e irrelevante.
+       Se virar barra de cor solida, trocar por scaleX. */
     transition: width 0.55s cubic-bezier(0.4,0,0.2,1);
     position: relative;
 }
