@@ -371,7 +371,7 @@ ROTAS_PUBLICAS: set[str] = {"login", "static"}
 ROTAS_STAFF: set[str] = {
     "admin_home", "dashboard", "dashboard_nova_sessao", "dashboard_encerrar",
     "relatorio_consolidado", "modbus_log", "testes", "api_testes_run",
-    "export_csv", "demo_reset",
+    "export_csv", "demo_reset", "liberar_conector",
 }
 
 
@@ -407,13 +407,31 @@ def _injetar_perfil():
     perfil correto em telas que não sabem nada sobre a carteira.
     """
     if "usuario" not in user_session:
-        return {"saldo_nc": 0.0, "reserva_ativa": None}
+        return {"saldo_nc": 0.0, "reserva_ativa": None, "pendencia": None}
     usuario = user_session["usuario"]
     return {
         "saldo_nc": wallet.saldo(usuario),
         "reserva_ativa": reservations.ativa_do_usuario(usuario),
         "cashback_pct": int(wallet.CASHBACK_NEXUSCOIN * 100),
+        "pendencia": _pendencia_do_usuario(usuario),
     }
+
+
+def _pendencia_do_usuario(usuario: str):
+    """
+    Recarga encerrada do usuário que ainda não foi paga, ou None.
+
+    Sem isto, quem fecha a aba na tela de pagamento não teria como voltar à
+    própria cobrança (#B41) — o débito existiria sem nenhum caminho até ele.
+
+    ponytail: varredura linear sobre as sessões em memória, uma consulta por
+    candidata. Se o histórico quente crescer, indexar por owner.
+    """
+    for s in sm.list_all():
+        if (s.owner == usuario and not s.is_active
+                and not _sessao_arquivada(s.session_id)):
+            return s
+    return None
 
 
 def _destino_seguro(bruto: str | None) -> str:
@@ -514,7 +532,12 @@ def posto(posto_id: str):
         session = sm.get_session(sid) if sid else None
         reserva = reservados.get(cid)
 
-        if sid:
+        # Sessão encerrada que ainda segura o conector: aguardando pagamento.
+        aguardando = bool(session and not session.is_active)
+
+        if aguardando:
+            status = "aguardando"
+        elif sid:
             status = "ocupado"
         elif reserva:
             status = "reservado"
@@ -542,7 +565,12 @@ def posto(posto_id: str):
             ),
             # Sprint 3 — quem pode agir neste card
             "minha_sessao":  bool(session and session.owner == usuario),
-            "pode_encerrar": bool(session and (session.owner == usuario or eh_staff)),
+            "pode_encerrar": bool(session and not aguardando
+                                  and (session.owner == usuario or eh_staff)),
+            # Encerrada e não paga: o dono paga, a equipe libera à força.
+            "aguardando":    aguardando,
+            "pode_pagar":    bool(aguardando and session.owner == usuario),
+            "pode_liberar":  bool(aguardando and eh_staff),
             "reservado":     reserva is not None,
             "minha_reserva": bool(reserva and reserva.usuario == usuario),
             "reserva_segundos": reserva.segundos_restantes if reserva else 0,
@@ -566,7 +594,7 @@ def posto(posto_id: str):
 
 @app.route("/posto/<posto_id>/carregador/<carregador_id>")
 def formulario(posto_id: str, carregador_id: str):
-    """Formulário de sessão do Sprint 1 — redireciona ao dashboard Sprint 2."""
+    """Formulário de nova sessão de recarga em um conector livre."""
     if posto_id not in POSTOS:
         flash("Posto não encontrado!", "error")
         return redirect(url_for("mapa"))
@@ -767,7 +795,9 @@ def dashboard():
         pm_p = posto_pms[pid]
         em_uso = round(_posto_sms[pid].total_allocated_power_kw(), 2)
         limite = pm_p.limit_kw
-        disponivel = round(limite - em_uso, 2)
+        # max(0) evita o "-0.0 kW" que aparecia quando a soma das potências
+        # alocadas estourava o limite por fração de kW (erro de float).
+        disponivel = round(max(limite - em_uso, 0.0), 2)
         pct = round((em_uso / limite) * 100, 1) if limite > 0 else 0.0
         n_sessoes = _posto_sms[pid].active_count()
         postos_power.append({
@@ -786,7 +816,7 @@ def dashboard():
 
     total_em_uso  = round(total_em_uso, 2)
     total_limite  = round(total_limite, 2)
-    total_disponivel_kw = round(total_limite - total_em_uso, 2)
+    total_disponivel_kw = round(max(total_limite - total_em_uso, 0.0), 2)
     total_pct = round((total_em_uso / total_limite) * 100, 1) if total_limite > 0 else 0.0
 
     # Histórico consolidado de todos os PowerManagers (últimas 5 decisões)
@@ -1013,7 +1043,7 @@ def api_status():
         postos_status[pid] = {
             "em_uso_kw":     em_uso,
             "limite_kw":     limite,
-            "disponivel_kw": round(limite - em_uso, 2),
+            "disponivel_kw": round(max(limite - em_uso, 0.0), 2),
             "ocupacao_pct":  round((em_uso / limite) * 100, 1) if limite > 0 else 0.0,
             "sessoes":       _posto_sms[pid].active_count(),
         }
@@ -1030,7 +1060,7 @@ def api_status():
         "potencia_em_uso":  total_em_uso_api,
         "potencia_limite":  total_limite_api,
         "ocupacao_pct":     total_pct_api,
-        "available_kw":     round(total_limite_api - total_em_uso_api, 2),
+        "available_kw":     round(max(total_limite_api - total_em_uso_api, 0.0), 2),
         "postos":           postos_status,
         "total_frames":     mb.frame_count(),
         "timestamp":        datetime.datetime.now().strftime("%H:%M:%S"),
@@ -1348,25 +1378,34 @@ def encerrar_recarga(session_id: str):
     """
     Encerra a recarga do usuário e o envia para a tela de pagamento.
 
-    Diferente de /dashboard/encerrar (que é do operador e finaliza ali mesmo),
-    esta rota exige que a sessão pertença ao usuário logado — ou que ele seja
-    staff — e não conclui o fluxo: libera o conector, rebalanceia a potência e
-    encaminha para o pagamento.
+    Dois fluxos distintos, decididos por quem clicou:
+
+      - motorista na própria recarga → a energia para, mas o conector CONTINUA
+        ocupado até o pagamento. Sair da tela de pagamento não devolve a vaga
+        de graça (#B41).
+      - equipe do posto numa recarga de terceiro → é operação, não compra:
+        encerra e libera o conector ali mesmo, como /dashboard/encerrar. A
+        cobrança fica pendente para o dono da sessão (#B42).
     """
     sessao = sm.get_session(session_id)
     if sessao is None:
         flash("Sessão não encontrada.", "error")
         return redirect(url_for("mapa"))
 
-    usuario = user_session["usuario"]
-    if sessao.owner != usuario and not user_session.get("staff"):
+    usuario   = user_session["usuario"]
+    eh_staff  = bool(user_session.get("staff"))
+    minha     = sessao.owner == usuario
+    if not minha and not eh_staff:
         flash("Esta recarga pertence a outro usuário.", "error")
         return redirect(url_for("posto", posto_id=sessao.station_id))
+
+    # Operação da equipe: libera o conector sem passar pelo caixa.
+    operacao = eh_staff and not minha
 
     posto_id = sessao.charger_id.split("-")[0]
     try:
         with _state_lock:
-            sm.finish_session(session_id)
+            sm.finish_session(session_id, liberar=operacao)
             mb.on_session_end(sessao)
             rb = _get_pm(posto_id).rebalance()
             if rb:
@@ -1374,14 +1413,42 @@ def encerrar_recarga(session_id: str):
         # A mensagem do rebalanceamento é linguagem de operação ("3 sessões
         # restauradas, carga 32.3/33.0 kW"). Útil para a equipe do posto,
         # ruído para quem só quer pagar e ir embora.
-        if rb and user_session.get("staff"):
+        if rb and eh_staff:
             flash(rb.message, "info")
     except Exception:
         logger.exception("Erro ao encerrar sessão %s", session_id)
         flash("Não foi possível encerrar a recarga.", "error")
         return redirect(url_for("posto", posto_id=posto_id))
 
+    if operacao:
+        flash(
+            f"Conector {sessao.charger_id} liberado. "
+            f"R$ {sessao.total_cost_brl:.2f} seguem pendentes para "
+            f"{sessao.user_name}.",
+            "info",
+        )
+        return redirect(url_for("posto", posto_id=posto_id))
+
     return redirect(url_for("pagamento", session_id=session_id))
+
+
+@app.route("/sessao/<session_id>/liberar", methods=["POST"])
+def liberar_conector(session_id: str):
+    """Equipe do posto desocupa um conector cuja sessão terminou sem pagamento."""
+    sessao = sm.get_session(session_id)
+    if sessao is None:
+        flash("Sessão não encontrada.", "error")
+        return redirect(url_for("mapa"))
+
+    posto_id = sessao.charger_id.split("-")[0]
+    with _state_lock:
+        sm.release_charger(session_id)
+        rb = _get_pm(posto_id).rebalance()
+        if rb:
+            mb.on_rebalance(rb)
+
+    flash(f"Conector {sessao.charger_id} liberado.", "info")
+    return redirect(url_for("posto", posto_id=posto_id))
 
 
 @app.route("/pagamento/<session_id>")
@@ -1460,6 +1527,14 @@ def pagamento_confirmar(session_id: str):
                 )
 
         _arquivar_sessao(sessao, usuario, metodo, cobranca.sinal_brl, cashback)
+
+        # Pago: agora sim o carro sai e a vaga volta para a fila (#B41).
+        with _state_lock:
+            sm.release_charger(session_id)
+            rb = _get_pm(sessao.station_id).rebalance()
+            if rb:
+                mb.on_rebalance(rb)
+
         logger.info("Pagamento confirmado: %s | %s | R$ %.2f | cashback %.2f",
                     session_id, metodo, cobranca.total_brl, cashback)
         return redirect(url_for("recibo", session_id=session_id))

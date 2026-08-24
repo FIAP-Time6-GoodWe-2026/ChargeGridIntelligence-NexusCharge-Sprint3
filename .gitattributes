@@ -1,0 +1,13 @@
+# Arquivos de lote do Windows precisam de CRLF: com LF puro o cmd.exe
+# pode interpretar mal blocos entre parenteses.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# O resto normaliza para LF no repositorio.
+*.py   text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+
+# Binarios ficam intactos.
+*.png binary
+*.jpg binary

@@ -312,7 +312,8 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     def finish_session(self, session_id: str,
-                       status: SessionStatus = SessionStatus.FINISHED
+                       status: SessionStatus = SessionStatus.FINISHED,
+                       liberar: bool = True,
                        ) -> ChargingSession:
         """
         Encerra uma sessão, libera o carregador e aplica taxa mínima se necessário.
@@ -324,6 +325,10 @@ class SessionManager:
         Args:
             session_id : ID da sessão
             status     : FINISHED (padrão) ou FAULTED
+            liberar    : False mantém o conector ocupado após o encerramento.
+                         É o caso do fluxo do motorista: parar o fluxo de
+                         energia não desocupa a vaga — o carro só sai depois
+                         de pagar (ver release_charger).
 
         Returns:
             Sessão encerrada
@@ -351,13 +356,31 @@ class SessionManager:
             session.total_cost_brl = TAXA_MINIMA_SESSAO
 
         # Libera o carregador
-        self._chargers[session.charger_id] = None
+        if liberar:
+            self._chargers[session.charger_id] = None
 
         logger.info(
-            "Sessão encerrada: %s | Status: %s | Energia: %.3f kWh | Custo: R$ %.2f",
+            "Sessão encerrada: %s | Status: %s | Energia: %.3f kWh | Custo: R$ %.2f"
+            " | conector %s",
             session_id, status.value, session.energy_kwh, session.total_cost_brl,
+            "liberado" if liberar else "retido",
         )
         return session
+
+    def release_charger(self, session_id: str) -> None:
+        """
+        Desocupa o conector de uma sessão já encerrada.
+
+        Separado de `finish_session` porque os dois eventos são distintos no
+        mundo real: o carregamento termina quando a energia para, e a vaga só
+        vaga quando o carro é desplugado — aqui, quando a sessão é paga ou
+        quando a equipe do posto libera o conector manualmente.
+        """
+        session = self._get_or_raise(session_id)
+        if self._chargers.get(session.charger_id) == session_id:
+            self._chargers[session.charger_id] = None
+            logger.info("Conector liberado: %s (sessão %s)",
+                        session.charger_id, session_id)
 
     # ------------------------------------------------------------------
     # Consultas agregadas

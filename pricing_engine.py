@@ -1,6 +1,6 @@
 # =============================================================================
 #  ChargeGrid Intelligence — Motor de Tarifação Dinâmica
-#  Sprint 2 | FIAP + GoodWe EV Challenge 2026
+#  Sprint 3 | FIAP + GoodWe EV Challenge 2026
 # =============================================================================
 
 """

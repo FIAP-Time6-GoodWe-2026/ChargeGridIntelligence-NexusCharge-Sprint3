@@ -34,19 +34,21 @@ ele paga**.
 
 ## 🚀 Como executar
 
-**Pré-requisitos:** Python 3.10+ e duas bibliotecas. O banco de dados usa o
-módulo `sqlite3`, que já vem com o Python — **não há nada a instalar por causa
-dele**.
+**Pré-requisito:** Python 3.10+. As duas bibliotecas (`flask` e `pytest`) são
+instaladas automaticamente na primeira execução. O banco de dados usa o módulo
+`sqlite3`, que já vem com o Python — **não há nada a instalar por causa dele**.
+
+### Windows
+
+Dois cliques em **`iniciar.bat`**. Ele confere o Python, instala o que faltar,
+sobe o servidor e abre o navegador.
+
+### Qualquer sistema
 
 ```bash
-# 1. Instalar as dependências
 pip install flask pytest
-
-# 2. Iniciar a aplicação
 python app.py
-
-# 3. Acessar no navegador
-#    http://localhost:5001
+# http://localhost:5001
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -128,6 +130,7 @@ modbus_simulator.py  Simulação do protocolo Modbus TCP (registradores HCA G2)
 pricing_engine.py    Tarifação dinâmica em 3 eixos
 logica_recarga.py    Lógica de simulação do Sprint 1
 
+iniciar.bat          Atalho de inicialização para Windows
 db.py                Persistência SQLite (stdlib) — carteira, reservas, histórico
 auth.py              Contas e autenticação (mockup acadêmico)
 wallet.py            Carteira NexusCoin: saldo, débito, crédito, cashback
