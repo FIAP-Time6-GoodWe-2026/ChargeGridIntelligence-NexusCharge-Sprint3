@@ -107,6 +107,20 @@
         --t-fast: 120ms;  --t-base: 180ms;  --t-slow: 260ms;
         --ease: cubic-bezier(0.2, 0, 0, 1);
 
+        /* ── Trilhos de conteúdo ─────────────────────────────────────────
+           O app tinha seis larguras máximas diferentes (1400, 1200, 1100,
+           1000...), e o cabeçalho nunca batia com o corpo: em 2560px o título
+           começava 124px à esquerda dos cards abaixo dele. Nada alinhava.
+
+           Agora são três trilhos, cada um com um motivo, e o cabeçalho usa
+           sempre o mesmo da página em que está. A referência vem dos
+           concorrentes medidos em 2560px: GreenV contém em 1140px,
+           NeoCharge em 1200–1280px, Intelbras em 1230px com faixas de 1600px.
+           Nenhum deles espalha o conteúdo até a borda.                     */
+        --rail-leitura:  1040px;  /* log e console: linha curta para ler     */
+        --rail:          1280px;  /* telas de tarefa — o padrão              */
+        --rail-painel:   1560px;  /* painéis densos: tabelas e grades largas */
+
         /* ── Foco: dois anéis para funcionar sobre qualquer fundo         */
         --focus-ring: 0 0 0 2px var(--cor-card), 0 0 0 4px var(--cor-primaria);
 
@@ -259,7 +273,9 @@
     }
 
     .header-content {
-        max-width: 1400px;
+        /* Mesmo trilho do corpo: é isto que faz o título alinhar com o
+           conteúdo abaixo dele em qualquer largura de tela. */
+        max-width: var(--rail);
         margin: 0 auto;
         display: flex;
         align-items: center;
@@ -389,7 +405,7 @@
         fill: none;
         position: absolute;
         transition:
-            transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
+            transform 0.38s var(--ease),
             opacity   0.22s ease;
     }
 
@@ -584,7 +600,7 @@
         100%{ transform: scale(1)    rotate(0deg);  filter: brightness(1);   }
     }
 
-    .stat-icon svg { transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+    .stat-icon svg { transition: transform 0.2s var(--ease); }
     .stat-item:hover .stat-icon svg { transform: scale(1.2); }
 
     /* ====================================================================
@@ -624,11 +640,16 @@
        ==================================================================== */
 
     .container {
-        max-width: 1200px;
+        max-width: var(--rail);
         margin: 0 auto;
         padding: var(--sp-5) var(--sp-4) var(--sp-7);
     }
     .container.estreito { max-width: 760px; }
+
+    /* A página declara o seu trilho redefinindo o token; cabeçalho, corpo e
+       qualquer componente que use var(--rail) acompanham de uma vez só. */
+    body.painel  { --rail: var(--rail-painel);  }
+    body.leitura { --rail: var(--rail-leitura); }
 
     .card {
         background: var(--cor-card);
@@ -959,7 +980,36 @@
         border-bottom: 1px solid var(--cor-borda);
     }
 
+    /* Faixa de cobrança pendente — recarga encerrada e não paga (#B41). */
+    .faixa-pendencia {
+        background: var(--cor-aviso-bg);
+        border-bottom: 1px solid var(--cor-aviso);
+    }
+    .faixa-pendencia-conteudo {
+        max-width: var(--rail);
+        margin: 0 auto;
+        padding: var(--sp-3) var(--sp-4);
+        display: flex; align-items: center; gap: var(--sp-3);
+        flex-wrap: wrap;
+        font-size: var(--fs-sm);
+        color: var(--cor-vip-texto);
+    }
+    .faixa-pendencia svg {
+        width: 18px; height: 18px; flex: 0 0 18px;
+        stroke: var(--cor-vip-texto); fill: none; stroke-width: 2;
+    }
+    .faixa-pendencia strong { font-variant-numeric: tabular-nums; }
+    .faixa-pendencia a {
+        margin-left: auto;
+        color: var(--cor-vip-texto);
+        font-weight: var(--fw-semibold);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+
     @media (max-width: 640px) {
+        .faixa-pendencia-conteudo { padding: var(--sp-3); }
+        .faixa-pendencia a { margin-left: 0; }
         .container { padding: var(--sp-4) var(--sp-3) var(--sp-6); }
         .card { padding: var(--sp-4); }
         .heroi { font-size: 2rem; }
@@ -971,7 +1021,7 @@
 
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="{% block corpo_classe %}{% endblock %}">
 
     {# ==================================================================
        SPRITE SVG — marca NexusCharge, definida uma vez e reusada com <use>.
@@ -1036,6 +1086,24 @@
     {% endwith %}
 
     {% block header %}{% endblock %}
+
+    {% if pendencia and request.endpoint not in ('pagamento', 'pagamento_confirmar') %}
+    <div class="faixa-pendencia">
+        <div class="faixa-pendencia-conteudo">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>
+                Recarga no {{ pendencia.charger_id }} encerrada sem pagamento —
+                <strong>R$ {{ pendencia.total_cost_brl | brl }}</strong>.
+                O conector fica ocupado até você pagar.
+            </span>
+            <a href="{{ url_for('pagamento', session_id=pendencia.session_id) }}">Pagar agora</a>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- toastContainer é movido para <body> via JS para escapar de qualquer stacking context -->
 
@@ -1283,7 +1351,7 @@
             });
             card.addEventListener('mouseleave', function () {
                 cancelAnimationFrame(raf);
-                this.style.transition = 'transform 0.45s cubic-bezier(0.34,1.56,0.64,1)';
+                this.style.transition = 'transform 0.45s cubic-bezier(0.2, 0, 0, 1)';
                 this.style.transform  = '';
             });
         }

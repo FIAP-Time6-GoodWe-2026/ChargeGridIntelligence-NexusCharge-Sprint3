@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block corpo_classe %}leitura{% endblock %}
+
 {% block title %}Relatório — {{ sessao.id_sessao }}{% endblock %}
 
 
@@ -19,7 +21,7 @@
    CONTAINER
    =========================================================== */
 .container {
-    max-width: 900px;
+    max-width: var(--rail);
     margin: 0 auto;
     padding: 28px 24px 48px;
 }
@@ -592,7 +594,7 @@ tbody tr {
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
-            ChargeGrid Intelligence · Sprint 2
+            ChargeGrid Intelligence · Sprint 3
         </div>
 
         <div class="info-grid">

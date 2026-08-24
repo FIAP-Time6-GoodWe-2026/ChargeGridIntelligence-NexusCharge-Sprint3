@@ -8,7 +8,7 @@
    LAYOUT
    ==================================================================== */
 .container {
-    max-width: 1200px;
+    max-width: var(--rail);
     margin: 0 auto;
     padding: 24px;
     display: grid;
@@ -356,7 +356,7 @@ input:not(:focus):hover, select:not(:focus):hover {
     border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
     margin-bottom: 18px;
-    animation: boltPop 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+    animation: boltPop 0.5s var(--ease) both;
 }
 @keyframes boltPop {
     from { transform: scale(0.4) rotate(-15deg); opacity: 0; }

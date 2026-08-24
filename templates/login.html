@@ -28,7 +28,11 @@ body { animation: none; }            /* login não precisa de animação de entr
     color: #E7EAF0;
     display: flex;
     flex-direction: column;
+    /* Centra nos DOIS eixos. Antes só o vertical estava centrado, e num
+       monitor 2K o conteúdo de 460px ficava colado na borda esquerda com
+       800px de vazio ao lado — o painel media 1311px. */
     justify-content: center;
+    align-items: center;
     padding: var(--sp-8) var(--sp-7);
 }
 
@@ -48,18 +52,20 @@ body { animation: none; }            /* login não precisa de animação de entr
     pointer-events: none;
 }
 
-.login-marca-conteudo { position: relative; max-width: 460px; }
-
-.login-simbolo { width: 132px; height: 132px; margin-bottom: var(--sp-6); }
-
-.login-kicker {
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #2ED3A0;
-    margin-bottom: var(--sp-3);
+/* O bloco da marca acompanha o painel em vez de ficar num tamanho fixo:
+   cresce até 520px e para — o lockup não ganha nada em ser gigante. */
+.login-marca-conteudo {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
 }
+
+.login-simbolo {
+    width: clamp(104px, 11vw, 148px);
+    height: clamp(104px, 11vw, 148px);
+    margin-bottom: var(--sp-6);
+}
+
 
 .login-wordmark {
     font-size: clamp(2.4rem, 4.6vw, 3.4rem);
@@ -109,6 +115,10 @@ body { animation: none; }            /* login não precisa de animação de entr
     position: relative;
 }
 
+/* Em telas muito largas os dois painéis param de crescer: sem isto, a 2560px
+   cada lado passa de 1200px e o conteúdo boia. */
+.login-tela { max-width: 1920px; margin: 0 auto; }
+
 .login-tema {
     position: absolute;
     top: var(--sp-4); right: var(--sp-4);
@@ -120,7 +130,7 @@ body { animation: none; }            /* login não precisa de animação de entr
 }
 .login-tema .theme-toggle svg { stroke: var(--cor-texto-secundario); }
 
-.login-card { width: 100%; max-width: 400px; }
+.login-card { width: 100%; max-width: 420px; }
 
 .login-titulo {
     font-size: var(--fs-2xl);
@@ -226,7 +236,7 @@ body { animation: none; }            /* login não precisa de animação de entr
     .login-simbolo { width: 56px; height: 56px; margin: 0; flex: 0 0 56px; }
     .login-wordmark { font-size: 1.5rem; margin: 0; }
     .login-wordmark span { display: inline; }
-    .login-kicker, .login-regua, .login-assinatura, .login-pilares { display: none; }
+    .login-regua, .login-assinatura, .login-pilares { display: none; }
     .login-form-lado { padding: var(--sp-6) var(--sp-4) var(--sp-7); }
 }
 </style>
@@ -245,13 +255,12 @@ body { animation: none; }            /* login não precisa de animação de entr
                 <use href="#marca-nexus"/>
             </svg>
 
-            <div>
-                <div class="login-kicker">ChargeGrid Intelligence</div>
-                <h1 class="login-wordmark">NEXUS<span>CHARGE</span></h1>
-            </div>
+            <h1 class="login-wordmark">NEXUS<span>CHARGE</span></h1>
 
             <div class="login-regua" aria-hidden="true"></div>
-            <div class="login-assinatura">EV Challenge 2026 · FIAP × GoodWe</div>
+            <div class="login-assinatura">
+                ChargeGrid Intelligence · EV Challenge 2026 · FIAP × GoodWe
+            </div>
 
             <div class="login-pilares">
                 <div class="login-pilar">
