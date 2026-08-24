@@ -88,6 +88,9 @@
 .progress-fill {
     height: 100%; border-radius: 99px; width: 0%;
     background: linear-gradient(90deg, var(--cor-primaria), #FF6B6B);
+    /* ponytail: anima width porque o gradiente da barra depende da largura
+       real; sao 5 medidores atualizados a cada 5 s, o reflow e irrelevante.
+       Se virar barra de cor solida, trocar por scaleX. */
     transition: width 0.3s ease;
     animation: progressPulse 1.5s ease infinite;
 }

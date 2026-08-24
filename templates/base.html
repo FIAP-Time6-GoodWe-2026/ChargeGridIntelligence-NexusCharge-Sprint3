@@ -463,10 +463,12 @@
         to   { transform: translateX(115%)  scale(0.94); opacity: 0; max-height: 0; }
     }
 
-    .toast-error   { border-left: 4px solid var(--cor-ocupado); }
-    .toast-success { border-left: 4px solid var(--cor-livre); }
-    .toast-warning { border-left: 4px solid var(--cor-aviso); }
-    .toast-info    { border-left: 4px solid var(--cor-info); }
+    /* O tipo já é dito pelo ícone e pela barra de progresso; a borda inteira
+       tingida basta e evita a tarja lateral grossa. */
+    .toast-error   { border-color: var(--cor-ocupado); }
+    .toast-success { border-color: var(--cor-livre); }
+    .toast-warning { border-color: var(--cor-aviso); }
+    .toast-info    { border-color: var(--cor-info); }
 
     .toast-icon {
         width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px;
@@ -504,10 +506,13 @@
 
     /* Barra de progresso de navegação entre páginas */
     #cgi-nav-bar {
-        position: fixed; top: 0; left: 0; height: 3px; width: 0%; z-index: 10000;
+        position: fixed; top: 0; left: 0; height: 3px; width: 100%; z-index: 10000;
         background: var(--cor-primaria);
         border-radius: 0 2px 2px 0;
-        transition: width var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
+        /* scaleX em vez de width: a barra roda no compositor, sem reflow a
+           cada quadro justo enquanto a próxima página está carregando. */
+        transform: scaleX(0); transform-origin: left center;
+        transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
         pointer-events: none;
     }
 
@@ -579,14 +584,11 @@
     /* ====================================================================
        MICRO-INTERAÇÕES — Ícones
        ==================================================================== */
-    .station-card:not(.indisponivel):hover .station-address svg {
-        animation: pinBounce 0.42s ease;
+    .station-card .station-address svg {
+        transition: transform var(--t-base) var(--ease);
     }
-    @keyframes pinBounce {
-        0%  { transform: translateY(0); }
-        38% { transform: translateY(-5px); }
-        68% { transform: translateY(1px); }
-        100%{ transform: translateY(0); }
+    .station-card:not(.indisponivel):hover .station-address svg {
+        transform: translateY(-3px);
     }
 
     .charger-card.livre:hover .charger-icon-box svg,
@@ -1377,13 +1379,16 @@
             var href = link.getAttribute('href') || '';
             if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
             try { if (new URL(href, location.href).hostname !== location.hostname) return; } catch(err) { return; }
-            bar.style.width = '42%';
+            bar.style.transform = 'scaleX(0.42)';
             bar.style.opacity = '1';
         });
 
         window.addEventListener('pageshow', function () {
-            bar.style.width = '100%';
-            setTimeout(function(){ bar.style.opacity = '0'; bar.style.width = '0'; }, 280);
+            bar.style.transform = 'scaleX(1)';
+            setTimeout(function(){
+                bar.style.opacity = '0';
+                bar.style.transform = 'scaleX(0)';
+            }, 280);
         });
     }());
 
