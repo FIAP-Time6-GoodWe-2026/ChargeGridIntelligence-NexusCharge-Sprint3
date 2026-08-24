@@ -140,7 +140,7 @@ qr.py                QR Code simulado em SVG (Pix)
    ↑
 app.py               Camada web Flask — rotas, validação e orquestração
 templates/           14 telas + partial de cabeçalho
-test_chargegrid.py   110 testes automatizados
+test_chargegrid.py   126 testes automatizados
 seed_historico.py    Gerador de histórico sintético para as análises
 ```
 
@@ -214,7 +214,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | POST | `/sessao` | Cria a sessão de recarga |
 | POST | `/api/reservar` | Reserva um conector (débito do sinal) |
 | POST | `/api/reserva/cancelar` | Cancela e estorna |
-| POST | `/sessao/<id>/encerrar` | Encerra a própria recarga |
+| POST | `/sessao/<id>/encerrar` | Encerra a própria recarga (o conector fica retido até o pagamento) |
 | GET | `/pagamento/<id>` | Tela de pagamento |
 | POST | `/pagamento/<id>/confirmar` | Efetiva o pagamento |
 | GET | `/recibo/<id>` | Comprovante |
@@ -232,6 +232,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | GET | `/modbus-log` | Frames Modbus TCP |
 | GET | `/testes` · POST `/api/testes/run` | Suíte de testes no navegador |
 | GET | `/admin/export.csv` | Histórico de sessões em CSV |
+| POST | `/sessao/<id>/liberar` | Libera conector de recarga encerrada e não paga |
 | POST | `/admin/demo-reset` | Restaura o estado de demonstração |
 | GET | `/api/status` | JSON de polling (5 s) |
 
@@ -243,7 +244,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest test_chargegrid.py -v      # ou pela interface, em /testes
 ```
 
-**110 testes** em 15 classes. A suíte roda contra um banco temporário por teste,
+**126 testes** em 17 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
