@@ -585,8 +585,11 @@
             <div class="power-bar-wrap">
                 <div class="power-bar-labels">
                     <span>0 kW</span>
-                    <span>Limiar (90%) — {{ "%.1f"|format(potencia_limite * 0.9) }} kW</span>
-                    <span>{{ "%.1f"|format(potencia_limite) }} kW</span>
+                    {# Ficava aqui um "Limiar (90%)" que mentia: a
+                       redistribuição começa em 100% do limite físico
+                       (LIMIAR_THROTTLE = 1.00). #}
+                    <span>{{ "%.1f"|format(potencia_em_uso) }} kW em uso</span>
+                    <span>{{ "%.1f"|format(potencia_limite) }} kW · redistribui aqui</span>
                 </div>
                 <div class="power-bar-track">
                     <div class="power-bar-fill {% if ocupacao_pct >= 90 %}danger{% elif ocupacao_pct >= 70 %}warning{% else %}safe{% endif %}"

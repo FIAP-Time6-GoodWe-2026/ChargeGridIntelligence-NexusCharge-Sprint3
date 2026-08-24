@@ -191,8 +191,11 @@
             <div class="total-val accent">R$ {{ "%.2f"|format(totais.receita) }}</div>
             <div class="total-lbl">Receita total</div>
             <div class="total-lbl" style="margin-top:4px;font-size:0.7rem;opacity:0.8;">
-                Realizada R$ {{ "%.2f"|format(totais.receita_realizada) }}
-                · Projetada R$ {{ "%.2f"|format(totais.receita_projetada) }}
+                Paga R$ {{ "%.2f"|format(totais.receita_realizada) }}
+                {% if totais.receita_pendente %}
+                · A receber R$ {{ "%.2f"|format(totais.receita_pendente) }}
+                {% endif %}
+                · Em curso R$ {{ "%.2f"|format(totais.receita_projetada) }}
             </div>
         </div>
         <div class="total-card">
