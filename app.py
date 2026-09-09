@@ -1800,7 +1800,14 @@ if "pytest" not in _sys.modules:
 if __name__ == "__main__":
     import socket
 
-    # Descobre o IP local da máquina para exibir no terminal
+    # Descobre o IP da máquina na rede para exibir no terminal: abre um
+    # socket UDP para um endereço externo e lê o endereço local que o sistema
+    # escolheu para a rota. Nada chega a ser enviado — em UDP o `connect` só
+    # fixa o destino. É por isso que 8.8.8.8 não precisa estar acessível.
+    #
+    # Fonte deste trecho: https://stackoverflow.com/q/24525588 (kramer65 e
+    # comunidade), CC BY-SA 3.0. A atribuição cobre estas linhas, não o
+    # arquivo — o resto do app.py é código do projeto.
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))

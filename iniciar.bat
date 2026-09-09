@@ -3,7 +3,7 @@ REM ============================================================================
 REM  ChargeGrid Intelligence - NexusCharge
 REM  Sprint 3 | FIAP + GoodWe EV Challenge 2026
 REM
-REM  Sobe o servidor e abre o navegador. Basta dar dois cliques neste arquivo.
+REM  Ponto de entrada unico do projeto. Basta dar dois cliques neste arquivo.
 REM ============================================================================
 
 REM Pagina de codigo UTF-8: sem isto o banner e os acentos saem como lixo no
@@ -35,7 +35,7 @@ if not defined PY (
     echo.
     echo  [ERRO] Python nao encontrado.
     echo.
-    echo  Instale a versao 3.10 ou superior em:
+    echo  Instale a versao 3.11 ou superior em:
     echo      https://www.python.org/downloads/
     echo.
     echo  IMPORTANTE: marque "Add python.exe to PATH" na primeira tela
@@ -52,10 +52,15 @@ REM ---------------------------------------------------------------------------
 REM  2. Garante as dependencias
 REM     Sao apenas duas: flask e pytest. O banco usa o sqlite3, que ja vem
 REM     junto com o Python - nao ha nada a instalar por causa dele.
+REM     Os dois sao verificados: com flask presente e pytest faltando, a tela
+REM     de testes quebrava e o .bat dizia que estava tudo certo.
 REM ---------------------------------------------------------------------------
-%PY% -c "import flask" >nul 2>&1
-if errorlevel 1 (
-    echo  Flask    : instalando...
+set "FALTA="
+%PY% -c "import flask" >nul 2>&1 || set "FALTA=1"
+%PY% -c "import pytest" >nul 2>&1 || set "FALTA=1"
+
+if defined FALTA (
+    echo  Pacotes  : instalando flask e pytest...
     %PY% -m pip install --quiet --disable-pip-version-check flask pytest
     if errorlevel 1 (
         echo.
@@ -66,35 +71,79 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    echo  Flask    : instalado
+    echo  Pacotes  : instalados
 ) else (
-    echo  Flask    : ok
+    echo  Pacotes  : ok
 )
 
 REM ---------------------------------------------------------------------------
-REM  3. Abre o navegador alguns segundos depois, ja com o servidor de pe.
-REM     Roda em paralelo para nao travar a subida do Flask.
+REM  3. Menu - o projeto tem dois programas, um por disciplina.
+REM ---------------------------------------------------------------------------
+:MENU
+echo  ----------------------------------------------------------
+echo.
+echo   [1]  Aplicativo web        mapa, recarga, carteira e pagamento
+echo   [2]  Gestao de sessoes     Estruturas de Dados - busca, ordenacao, Big-O
+echo   [3]  Rodar os testes       suite completa no terminal
+echo   [4]  Sair
+echo.
+set "OPCAO="
+set /p "OPCAO=  Escolha [1]: "
+if not defined OPCAO set "OPCAO=1"
+
+if "%OPCAO%"=="1" goto WEB
+if "%OPCAO%"=="2" goto CLI
+if "%OPCAO%"=="3" goto TESTES
+if "%OPCAO%"=="4" exit /b 0
+
+echo.
+echo  Opcao invalida: "%OPCAO%". Escolha de 1 a 4.
+echo.
+goto MENU
+
+REM ---------------------------------------------------------------------------
+:WEB
+REM  Abre o navegador alguns segundos depois, ja com o servidor de pe.
+REM  Roda em paralelo para nao travar a subida do Flask.
 REM ---------------------------------------------------------------------------
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 4; Start-Process 'http://localhost:5001'" >nul 2>&1
 
+echo.
 echo  Navegador: abrindo em http://localhost:5001
+echo  Para parar o servidor: Ctrl+C
 echo  ----------------------------------------------------------
 echo.
 
-REM ---------------------------------------------------------------------------
-REM  4. Sobe o servidor. O proprio app.py imprime as contas de demonstracao.
-REM ---------------------------------------------------------------------------
+REM O proprio app.py imprime as contas de demonstracao no banner.
 %PY% app.py
+goto FIM
 
 REM ---------------------------------------------------------------------------
-REM  5. Saida - a janela fica aberta para o erro poder ser lido.
+:CLI
+REM  Entrega de Estruturas de Dados. Le o historico de chargegrid.db se existir.
+REM ---------------------------------------------------------------------------
+echo.
+%PY% gestao_sessoes.py
+goto FIM
+
+REM ---------------------------------------------------------------------------
+:TESTES
+REM ---------------------------------------------------------------------------
+echo.
+echo  ----------------------------------------------------------
+%PY% -m pytest test_chargegrid.py -q
+goto FIM
+
+REM ---------------------------------------------------------------------------
+:FIM
+REM  A janela fica aberta para a mensagem poder ser lida.
 REM ---------------------------------------------------------------------------
 echo.
 echo  ----------------------------------------------------------
 if errorlevel 1 (
-    echo  Servidor encerrado com erro. A mensagem esta acima.
+    echo  Encerrado com erro. A mensagem esta acima.
 ) else (
-    echo  Servidor encerrado.
+    echo  Encerrado.
 )
 echo.
 pause

@@ -3,6 +3,11 @@
 > Sistema inteligente de gerenciamento de recarga para eletropostos comerciais
 > **EV Challenge 2026 — FIAP + GoodWe · Sprint 3**
 
+📦 **Repositório:** https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3
+
+📄 **Entrega de Estruturas de Dados:** [`gestao_sessoes.py`](gestao_sessoes.py) ·
+[relatório](RELATORIO_SPRINT3_DSA.md) ([PDF](RELATORIO_SPRINT3_DSA.pdf))
+
 ChargeGrid Intelligence resolve um problema concreto do segmento comercial e de
 varejo de eletropostos: a ausência de mecanismos integrados para **orquestrar
 potência elétrica**, **registrar ciclos de recarga**, **faturar sessões** e
@@ -34,21 +39,32 @@ ele paga**.
 
 ## 🚀 Como executar
 
-**Pré-requisito:** Python 3.10+. As duas bibliotecas (`flask` e `pytest`) são
+**Pré-requisito:** Python 3.11+. As duas bibliotecas (`flask` e `pytest`) são
 instaladas automaticamente na primeira execução. O banco de dados usa o módulo
 `sqlite3`, que já vem com o Python — **não há nada a instalar por causa dele**.
 
 ### Windows
 
-Dois cliques em **`iniciar.bat`**. Ele confere o Python, instala o que faltar,
-sobe o servidor e abre o navegador.
+Dois cliques em **`iniciar.bat`**. Ele confere o Python, instala o que faltar
+e abre um menu:
+
+```
+ [1]  Aplicativo web        mapa, recarga, carteira e pagamento
+ [2]  Gestao de sessoes     Estruturas de Dados - busca, ordenacao, Big-O
+ [3]  Rodar os testes       suite completa no terminal
+ [4]  Sair
+```
+
+A opção 1 sobe o servidor e abre o navegador sozinho.
 
 ### Qualquer sistema
 
 ```bash
 pip install flask pytest
-python app.py
-# http://localhost:5001
+
+python app.py             # aplicativo web — http://localhost:5001
+python gestao_sessoes.py  # gestão de sessões (Estruturas de Dados)
+pytest test_chargegrid.py # 142 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -130,7 +146,7 @@ modbus_simulator.py  Simulação do protocolo Modbus TCP (registradores HCA G2)
 pricing_engine.py    Tarifação dinâmica em 3 eixos
 logica_recarga.py    Lógica de simulação do Sprint 1
 
-iniciar.bat          Atalho de inicialização para Windows
+iniciar.bat          Menu de inicialização para Windows (web · CLI · testes)
 db.py                Persistência SQLite (stdlib) — carteira, reservas, histórico
 auth.py              Contas e autenticação (mockup acadêmico)
 wallet.py            Carteira NexusCoin: saldo, débito, crédito, cashback
