@@ -140,9 +140,47 @@ qr.py                QR Code simulado em SVG (Pix)
    ↑
 app.py               Camada web Flask — rotas, validação e orquestração
 templates/           14 telas + partial de cabeçalho
-test_chargegrid.py   126 testes automatizados
+test_chargegrid.py   142 testes automatizados
 seed_historico.py    Gerador de histórico sintético para as análises
+
+gestao_sessoes.py    CLI de Estruturas de Dados — busca, ordenação e Big-O
 ```
+
+---
+
+## 📚 Entrega de Estruturas de Dados
+
+A disciplina de Estruturas de Dados avalia algoritmos escritos à mão, não o
+app web. O programa dessa entrega é o **`gestao_sessoes.py`**: um sistema de
+gerenciamento de sessões em terminal, com menu, sobre uma `list` de objetos
+`Sessao`.
+
+```
+python gestao_sessoes.py              # menu interativo
+python gestao_sessoes.py --autoteste  # verificação dos algoritmos
+```
+
+Ao abrir, ele carrega as sessões pagas de `chargegrid.db` — o histórico que o
+app web produz — e nunca escreve nele. Sem banco, começa com a lista vazia e
+o cadastro pelo menu preenche.
+
+| Algoritmo | Complexidade | Onde |
+|---|---|---|
+| Busca sequencial | O(n) | `busca_sequencial()` |
+| Busca binária | O(log n) | `busca_binaria()` — exige lista ordenada |
+| Bubble sort | O(n²) | `bubble_sort()` |
+| Insertion sort | O(n²) pior · O(n) melhor | `insertion_sort()` |
+
+Nenhum deles usa `sort()`, `sorted()`, `index()` ou `bisect` — a restrição do
+enunciado é justamente essa, e um teste da suíte (`test_nao_usa_sort_nem_sorted`)
+impede que alguém "simplifique" isso depois.
+
+A opção **6 — Comparar algoritmos** mede as comparações realmente executadas
+em entradas de tamanho crescente, e é de onde saem os números do relatório.
+
+📄 **[RELATORIO_SPRINT3_DSA.md](RELATORIO_SPRINT3_DSA.md)** — estrutura de
+dados escolhida, funcionamento, os dois algoritmos e a análise Big-O.
+Também em [PDF](RELATORIO_SPRINT3_DSA.pdf).
 
 ---
 
