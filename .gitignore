@@ -7,3 +7,6 @@ chargegrid.db
 chargegrid_sessoes.csv
 .venv/
 .impeccable/
+
+# Pacote de entrega, gerado a partir do que ja esta versionado aqui
+*.zip

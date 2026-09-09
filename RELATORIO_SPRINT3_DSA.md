@@ -25,25 +25,25 @@ para o código no repositório.
 
 | Item do enunciado | Onde está |
 |---|---|
-| 1. Estrutura da sessão (classe) | [`gestao_sessoes.py`, `class Sessao`, linha 53](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L53-L109) |
-| 2. Registro de múltiplas sessões (lista) | [`sessoes: List[Sessao]`, linha 127](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L118-L141) · `append` em `cadastrar_sessao()`, `len()` em `listar_sessoes()` |
-| 3. Menu principal com laço | [`MENU` linha 682 e `main()` linha 698](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L682-L751) — o `while True` está na linha 722 |
-| 4. Busca — sequencial | [`busca_sequencial()`, linha 190](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L190-L212) |
-| 4. Busca — binária | [`busca_binaria()`, linha 215](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L215-L252) |
-| 5. Ordenação — Bubble Sort | [`bubble_sort()`, linha 267](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L267-L298) |
-| 5. Ordenação — Insertion Sort | [`insertion_sort()`, linha 301](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L301-L344) |
-| 5. Critério escolhido pelo usuário | [`CRITERIOS`, linha 259](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L255-L265) — ID, energia, custo e tempo |
-| 6. Estatísticas da estação | [`estatisticas()`, linha 353](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L353-L400) e `mostrar_estatisticas()`, linha 593 |
+| 1. Estrutura da sessão (classe) | [`gestao_sessoes.py`, `class Sessao`, linha 60](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L60-L116) |
+| 2. Registro de múltiplas sessões (lista) | [`sessoes: List[Sessao]`, linha 134](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L125-L148) · `append` em `cadastrar_sessao()`, `len()` em `listar_sessoes()` |
+| 3. Menu principal com laço | [`MENU` linha 701 e `main()` linha 717](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L701-L765) — o `while True` está na linha 741 |
+| 4. Busca — sequencial | [`busca_sequencial()`, linha 209](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L209-L231) |
+| 4. Busca — binária | [`busca_binaria()`, linha 234](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L234-L268) |
+| 5. Ordenação — Bubble Sort | [`bubble_sort()`, linha 286](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L286-L317) |
+| 5. Ordenação — Insertion Sort | [`insertion_sort()`, linha 320](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L320-L358) |
+| 5. Critério escolhido pelo usuário | [`CRITERIOS`, linha 278](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L278-L282) — ID, energia, custo e tempo |
+| 6. Estatísticas da estação | [`estatisticas()`, linha 372](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L372-L419) e `mostrar_estatisticas()`, linha 612 |
 | 7. Funções organizando as operações | tabela completa na seção 2 deste relatório |
-| 8. Tratamento de dados e validações | [`ler_numero()`, linha 414](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L414-L446) · `id_existe()` linha 139 · captura de exceção em `main()`, linha 743 |
+| 8. Tratamento de dados e validações | [`ler_numero()`, linha 433](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L433-L463) · `id_existe()` linha 146 · captura de exceção no laço do menu, `except` na linha 762 |
 | 9. Análise de algoritmos (Big-O) | seção 5 deste relatório, e as docstrings dos quatro algoritmos no código |
-| 10. Comparação entre algoritmos | seção 6 deste relatório · medição executável em [`comparar_algoritmos()`, linha 622](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L622-L679) |
+| 10. Comparação entre algoritmos | seção 6 deste relatório · medição executável em [`comparar_algoritmos()`, linha 641](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L641-L694) |
 
 ### Arquivos da entrega
 
 | Arquivo | O que é |
 |---|---|
-| [`gestao_sessoes.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py) | **o programa desta Sprint** — 811 linhas, só biblioteca padrão |
+| [`gestao_sessoes.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py) | **o programa desta Sprint** — 830 linhas, só biblioteca padrão |
 | [`RELATORIO_SPRINT3_DSA.md`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/RELATORIO_SPRINT3_DSA.md) | este documento |
 | [`RELATORIO_SPRINT3_DSA.pdf`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/RELATORIO_SPRINT3_DSA.pdf) | este documento em PDF |
 | [`test_chargegrid.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/test_chargegrid.py) | suíte do projeto; a classe `TestGestaoSessoes` cobre os algoritmos |

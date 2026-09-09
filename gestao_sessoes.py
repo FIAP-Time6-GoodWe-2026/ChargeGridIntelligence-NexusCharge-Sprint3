@@ -39,10 +39,17 @@ Uso
 from __future__ import annotations
 
 import datetime
+import pathlib
 import random
+import sqlite3
 import sys
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
+
+# Banco de histórico do aplicativo web, procurado ao lado deste arquivo.
+# É a única ligação com o resto do projeto, e ela é opcional: sem o arquivo,
+# o programa abre com a lista vazia.
+BANCO = "chargegrid.db"
 
 # ---------------------------------------------------------------------------
 # 1. ESTRUTURA DE DADOS — a sessão de recarga
@@ -145,15 +152,27 @@ def carregar_do_banco() -> List[Sessao]:
     """
     Lê as sessões pagas de `chargegrid.db` e devolve a lista correspondente.
 
+    Usa o `sqlite3` da biblioteca padrão em vez de importar o módulo `db.py`
+    do aplicativo web: assim este arquivo é executável sozinho, sem precisar
+    de nenhum outro arquivo do projeto ao lado dele.
+
     Falha silenciosa e proposital: sem banco, sem tabela ou sem sessões, o
     programa abre com a lista vazia em vez de recusar-se a iniciar. O CLI
     precisa rodar em qualquer máquina com Python, mesmo sem o app web ter
     sido executado antes.
     """
+    caminho = pathlib.Path(__file__).with_name(BANCO)
+    if not caminho.exists():
+        return []
+
     try:
-        import db  # noqa: WPS433 — importação local: o CLI roda sem o app
-        linhas = db.query_all("SELECT * FROM sessoes ORDER BY inicio")
-    except Exception:
+        conexao = sqlite3.connect(caminho)
+        conexao.row_factory = sqlite3.Row
+        linhas = conexao.execute(
+            "SELECT * FROM sessoes ORDER BY inicio"
+        ).fetchall()
+        conexao.close()
+    except sqlite3.Error:
         return []
 
     carregadas: List[Sessao] = []
