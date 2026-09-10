@@ -6,7 +6,7 @@
 """
 Autenticação simplificada para demonstração acadêmica.
 
-Três contas fixas com uma senha única. Não há cadastro, recuperação de senha
+Quatro contas fixas com uma senha única. Não há cadastro, recuperação de senha
 nem hash — e isso é deliberado: o objetivo do Sprint 3 é demonstrar o fluxo de
 sessão, carteira e pagamento, não construir um provedor de identidade.
 

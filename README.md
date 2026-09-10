@@ -5,9 +5,6 @@
 
 📦 **Repositório:** https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3
 
-📄 **Entrega de Estruturas de Dados:** [`estruturas-de-dados/gestao_sessoes.py`](estruturas-de-dados/gestao_sessoes.py) ·
-[relatório](estruturas-de-dados/RELATORIO_SPRINT3_DSA.md) ([PDF](estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf))
-
 ChargeGrid Intelligence resolve um problema concreto do segmento comercial e de
 varejo de eletropostos: a ausência de mecanismos integrados para **orquestrar
 potência elétrica**, **registrar ciclos de recarga**, **faturar sessões** e
@@ -45,14 +42,13 @@ instaladas automaticamente na primeira execução. O banco de dados usa o módul
 
 ### Windows
 
-Dois cliques em **`iniciar.bat`**. Ele confere o Python, instala o que faltar
-e abre um menu:
+Dois cliques em **`aplicativo-web/iniciar.bat`**. Ele confere o Python,
+instala o que faltar e abre um menu:
 
 ```
  [1]  Aplicativo web        mapa, recarga, carteira e pagamento
- [2]  Gestao de sessoes     Estruturas de Dados - busca, ordenacao, Big-O
- [3]  Rodar os testes       suite completa no terminal
- [4]  Sair
+ [2]  Rodar os testes       suite completa no terminal
+ [3]  Sair
 ```
 
 A opção 1 sobe o servidor e abre o navegador sozinho.
@@ -62,9 +58,8 @@ A opção 1 sobe o servidor e abre o navegador sozinho.
 ```bash
 pip install flask pytest
 
-cd aplicativo-web && python app.py             # http://localhost:5001
-cd estruturas-de-dados && python gestao_sessoes.py
-cd aplicativo-web && pytest test_chargegrid.py # 146 testes
+cd aplicativo-web && python app.py   # http://localhost:5001
+cd aplicativo-web && pytest -q       # 130 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -134,17 +129,10 @@ Na tela de login, clicar em uma conta preenche e envia o formulário.
 Arquitetura modular em camadas, sem dependências circulares. Nenhuma regra de
 negócio vive na camada web.
 
-O projeto tem duas pastas, uma por natureza de entrega:
-
 ```
-iniciar.bat               Menu de inicialização para Windows (web · CLI · testes)
+aplicativo-web/
+  iniciar.bat             Menu de inicialização para Windows (web · testes)
 
-estruturas-de-dados/      ── entrega da disciplina de Estruturas de Dados
-  gestao_sessoes.py       Busca, ordenação e Big-O escritos à mão · só stdlib
-  RELATORIO_SPRINT3_DSA   O relatório, em .md e .pdf
-  LEIA-ME.txt             Guia do pacote de entrega
-
-aplicativo-web/           ── o sistema
   models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
      ↑
   session_manager.py      Ciclo de vida das sessões e acúmulo de energia
@@ -165,50 +153,12 @@ aplicativo-web/           ── o sistema
      ↑
   app.py                  Camada web Flask — rotas, validação e orquestração
   templates/              14 telas + partial de cabeçalho
-  test_chargegrid.py      146 testes automatizados
+  test_chargegrid.py      130 testes automatizados
   seed_historico.py       Gerador de histórico sintético para as análises
-  conftest.py             Põe estruturas-de-dados/ no sys.path da suíte
 ```
 
 Os módulos do aplicativo ficam lado a lado de propósito: são camadas, não um
 pacote. Empacotá-los renomearia 26 imports para arrumar uma listagem.
-
----
-
-## 📚 Entrega de Estruturas de Dados
-
-A disciplina de Estruturas de Dados avalia algoritmos escritos à mão, não o
-app web. O programa dessa entrega é o **`gestao_sessoes.py`**: um sistema de
-gerenciamento de sessões em terminal, com menu, sobre uma `list` de objetos
-`Sessao`.
-
-```
-cd estruturas-de-dados
-python gestao_sessoes.py              # menu interativo
-python gestao_sessoes.py --autoteste  # verificação dos algoritmos
-```
-
-Ao abrir, ele carrega as sessões pagas de `chargegrid.db` — o histórico que o
-app web produz — e nunca escreve nele. Sem banco, começa com a lista vazia e
-o cadastro pelo menu preenche.
-
-| Algoritmo | Complexidade | Onde |
-|---|---|---|
-| Busca sequencial | O(n) | `busca_sequencial()` |
-| Busca binária | O(log n) | `busca_binaria()` — exige lista ordenada |
-| Bubble sort | O(n²) | `bubble_sort()` |
-| Insertion sort | O(n²) pior · O(n) melhor | `insertion_sort()` |
-
-Nenhum deles usa `sort()`, `sorted()`, `index()` ou `bisect` — a restrição do
-enunciado é justamente essa, e um teste da suíte (`test_nao_usa_sort_nem_sorted`)
-impede que alguém "simplifique" isso depois.
-
-A opção **6 — Comparar algoritmos** mede as comparações realmente executadas
-em entradas de tamanho crescente, e é de onde saem os números do relatório.
-
-📄 **[RELATORIO_SPRINT3_DSA.md](estruturas-de-dados/RELATORIO_SPRINT3_DSA.md)** — estrutura de
-dados escolhida, funcionamento, os dois algoritmos e a análise Big-O.
-Também em [PDF](estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf).
 
 ---
 
@@ -307,10 +257,10 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 ## 🧪 Testes
 
 ```bash
-cd aplicativo-web && pytest test_chargegrid.py -v   # ou pela interface, em /testes
+cd aplicativo-web && pytest -v   # ou pela interface, em /testes
 ```
 
-**146 testes** em 19 classes. A suíte roda contra um banco temporário por teste,
+**130 testes** em 18 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -344,9 +294,11 @@ python seed_historico.py 300 --limpar --semente 42
 Depois, entre como `mylon` e baixe em **`/admin/export.csv`**.
 
 Com a base gerada acima, a regressão `duração → energia` devolve coeficiente
-angular ≈ 0,160 kWh/min — que **multiplicado por 60 dá ≈ 9,6 kW**, a potência
-média real da instalação, dentro da faixa do GW11K-HCA-20. A dispersão em torno
-da reta é o efeito do throttling.
+angular **0,1603 kWh/min** (R² = 0,865) — que **multiplicado por 60 dá 9,62 kW**,
+próximo da potência média realmente entregue nas sessões, 9,32 kW, e dentro da
+faixa do GW11K-HCA-20. A diferença entre os dois vem do intercepto negativo
+(−0,47 kWh): a reta cobra um custo fixo de partida que não existe, e compensa
+com uma inclinação um pouco maior. A dispersão em torno dela é o throttling.
 
 ---
 

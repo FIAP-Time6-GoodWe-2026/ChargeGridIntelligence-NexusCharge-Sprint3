@@ -17,6 +17,7 @@ Cobertura:
     - Integração    : ciclo completo de sessão via app Flask
 """
 
+import pathlib
 import sys
 import time
 import types
@@ -749,7 +750,9 @@ class TestAuditoriaB24aB35:
     # ---- B32: imports não usados removidos do modbus_simulator -----------
     def test_b32_imports_limpos(self):
         import modbus_simulator as mbsim
-        src = open(mbsim.__file__).read()
+        # encoding explícito: sem ele o Python usa a codificação do locale
+        # (cp1252 no Windows) e engasga nos acentos do próprio fonte.
+        src = pathlib.Path(mbsim.__file__).read_text(encoding="utf-8")
         # 'time' não deve mais ser importado
         assert "import time" not in src, "import time deveria ter sido removido (B32)"
 
@@ -1582,155 +1585,6 @@ class TestQRSimulado:
         svg = qr_simulado("CGI|TESTE|10.00")
         assert "aria-label" in svg
         assert svg.count("<rect") > 200
-
-
-# ===========================================================================
-# SPRINT 3 — Estruturas de Dados (gestao_sessoes.py)
-# Busca, ordenação e complexidade implementadas manualmente
-# ===========================================================================
-
-class TestGestaoSessoes:
-    """Cobre os algoritmos avaliados pela disciplina de Estruturas de Dados."""
-
-    @pytest.fixture
-    def amostra(self):
-        from gestao_sessoes import Sessao
-        return [
-            Sessao(id=5, energia=30.0, tempo=95.0,  custo=36.00),
-            Sessao(id=1, energia=12.5, tempo=40.0,  custo=15.30),
-            Sessao(id=9, energia=8.0,  tempo=25.0,  custo=10.00),
-            Sessao(id=3, energia=45.2, tempo=140.0, custo=54.24),
-        ]
-
-    # ---- Restrição do enunciado ------------------------------------------
-    def test_nao_usa_sort_nem_sorted(self):
-        """
-        `sort()`/`sorted()` substituindo o algoritmo manual reprovam a
-        entrega. Este teste é a guarda contra alguém "simplificar" depois.
-        """
-        import pathlib
-        # Caminho a partir deste arquivo, não do diretório de trabalho: o CLI
-        # mora na pasta irmã, e `pytest` pode ser chamado de qualquer lugar.
-        fonte = (pathlib.Path(__file__).resolve().parent.parent
-                 / "estruturas-de-dados" / "gestao_sessoes.py"
-                 ).read_text(encoding="utf-8")
-        codigo = "\n".join(
-            linha for linha in fonte.splitlines()
-            if not linha.lstrip().startswith("#")
-        )
-        # A docstring do módulo cita os nomes ao explicar que não os usa;
-        # o que não pode existir é chamada.
-        assert "sorted(" not in codigo.replace("`sorted()`", "")
-        assert ".sort(" not in codigo.replace("`sort()`", "")
-
-    # ---- Busca -----------------------------------------------------------
-    def test_busca_sequencial_encontra_em_lista_desordenada(self, amostra):
-        from gestao_sessoes import busca_sequencial
-        assert busca_sequencial(amostra, 9)[0] == 2
-        assert busca_sequencial(amostra, 5)[0] == 0
-
-    def test_busca_sequencial_devolve_menos_um_quando_ausente(self, amostra):
-        from gestao_sessoes import busca_sequencial
-        indice, comparacoes = busca_sequencial(amostra, 77)
-        assert indice == -1
-        assert comparacoes == len(amostra), "pior caso percorre a lista toda"
-
-    def test_busca_binaria_sobre_lista_ordenada(self, amostra):
-        from gestao_sessoes import busca_binaria, insertion_sort, CRITERIOS
-        insertion_sort(amostra, CRITERIOS["1"][1])
-        assert [s.id for s in amostra] == [1, 3, 5, 9]
-        assert busca_binaria(amostra, 5)[0] == 2
-        assert busca_binaria(amostra, 1)[0] == 0
-        assert busca_binaria(amostra, 9)[0] == 3
-        assert busca_binaria(amostra, 4)[0] == -1
-
-    def test_busca_binaria_e_logaritmica(self):
-        from gestao_sessoes import Sessao, busca_binaria
-        import math
-        lista = [Sessao(id=i, energia=1.0, tempo=1.0, custo=1.0)
-                 for i in range(1, 10001)]
-        _, comparacoes = busca_binaria(lista, 10001)   # ausente = pior caso
-        assert comparacoes <= math.ceil(math.log2(10001)) + 1, (
-            "busca binária deve custar ~log2(n), não n"
-        )
-
-    # ---- Ordenação -------------------------------------------------------
-    def test_bubble_sort_ordena_por_cada_criterio(self, amostra):
-        from gestao_sessoes import bubble_sort, CRITERIOS
-        for codigo, (_, chave) in CRITERIOS.items():
-            lista = list(amostra)
-            bubble_sort(lista, chave)
-            valores = [chave(s) for s in lista]
-            assert valores == sorted(valores), f"critério {codigo} fora de ordem"
-
-    def test_insertion_sort_ordena_por_cada_criterio(self, amostra):
-        from gestao_sessoes import insertion_sort, CRITERIOS
-        for codigo, (_, chave) in CRITERIOS.items():
-            lista = list(amostra)
-            insertion_sort(lista, chave)
-            valores = [chave(s) for s in lista]
-            assert valores == sorted(valores), f"critério {codigo} fora de ordem"
-
-    def test_bubble_faz_exatamente_n_vezes_n_menos_um_sobre_dois(self):
-        """A fórmula do relatório tem que bater com o código."""
-        from gestao_sessoes import _amostra, bubble_sort, CRITERIOS
-        for n in (10, 25, 50):
-            assert bubble_sort(_amostra(n), CRITERIOS["1"][1]) == n * (n - 1) // 2
-
-    def test_insertion_tem_melhor_caso_linear(self):
-        from gestao_sessoes import _amostra, insertion_sort, CRITERIOS
-        n = 50
-        lista = _amostra(n)
-        insertion_sort(lista, CRITERIOS["1"][1])          # 1ª: desordenada
-        segunda = insertion_sort(lista, CRITERIOS["1"][1])  # 2ª: já ordenada
-        assert segunda == n - 1, (
-            "com a lista ordenada o insertion deve custar n-1 comparações"
-        )
-
-    def test_ordenacao_e_estavel_no_tamanho_da_lista(self, amostra):
-        from gestao_sessoes import bubble_sort, CRITERIOS
-        lista = list(amostra)
-        bubble_sort(lista, CRITERIOS["2"][1])
-        assert len(lista) == len(amostra), "ordenar não pode perder elemento"
-        assert {s.id for s in lista} == {s.id for s in amostra}
-
-    # ---- Estatísticas ----------------------------------------------------
-    def test_estatisticas_dos_seis_indicadores(self, amostra):
-        from gestao_sessoes import estatisticas
-        e = estatisticas(amostra)
-        assert e["sessoes"] == 4
-        assert e["energia"] == 95.7
-        assert e["faturamento"] == 115.54
-        assert e["ticket"] == 28.89
-        assert e["maior"] == 45.2
-        assert e["menor"] == 8.0
-
-    def test_estatisticas_de_lista_vazia_nao_estoura(self):
-        from gestao_sessoes import estatisticas
-        e = estatisticas([])
-        assert e["sessoes"] == 0 and e["ticket"] == 0.0
-
-    def test_ticket_medio_bate_com_o_faturamento_exibido(self, amostra):
-        """O usuário divide os números da tela de cabeça — têm que fechar."""
-        from gestao_sessoes import estatisticas
-        e = estatisticas(amostra)
-        assert round(e["faturamento"] / e["sessoes"], 2) == e["ticket"]
-
-    # ---- Validações ------------------------------------------------------
-    def test_id_duplicado_e_detectado(self, amostra):
-        from gestao_sessoes import id_existe
-        assert id_existe(amostra, 5) is True
-        assert id_existe(amostra, 77) is False
-
-    def test_proximo_id_nao_colide(self, amostra):
-        from gestao_sessoes import proximo_id, id_existe
-        novo = proximo_id(amostra)
-        assert novo == 10
-        assert not id_existe(amostra, novo)
-
-    def test_autoteste_do_modulo_passa(self):
-        from gestao_sessoes import autoteste
-        autoteste()   # levanta AssertionError se algum algoritmo regredir
 
 
 class TestRelatorioOrdenavel:

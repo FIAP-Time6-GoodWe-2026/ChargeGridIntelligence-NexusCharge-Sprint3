@@ -10,6 +10,3 @@ chargegrid_sessoes.csv
 
 # Pacote de entrega, gerado a partir do que ja esta versionado aqui
 *.zip
-
-# Pasta de trabalho do app do Claude, criada dentro do projeto
-Claude outputs/

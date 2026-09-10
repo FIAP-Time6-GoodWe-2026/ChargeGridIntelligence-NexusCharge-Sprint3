@@ -3,7 +3,7 @@ REM ============================================================================
 REM  ChargeGrid Intelligence - NexusCharge
 REM  Sprint 3 | FIAP + GoodWe EV Challenge 2026
 REM
-REM  Ponto de entrada unico do projeto. Basta dar dois cliques neste arquivo.
+REM  Ponto de entrada do aplicativo. Basta dar dois cliques neste arquivo.
 REM ============================================================================
 
 REM Pagina de codigo UTF-8: sem isto o banner e os acentos saem como lixo no
@@ -15,10 +15,6 @@ title ChargeGrid Intelligence - NexusCharge
 
 REM Trabalha sempre na pasta deste .bat, nao na pasta de onde ele foi chamado.
 cd /d "%~dp0"
-
-REM O projeto tem duas pastas: a entrega de Estruturas de Dados e o sistema.
-set "PASTA_CLI=estruturas-de-dados"
-set "PASTA_APP=aplicativo-web"
 
 echo.
 echo  ChargeGrid Intelligence - NexusCharge
@@ -81,27 +77,25 @@ if defined FALTA (
 )
 
 REM ---------------------------------------------------------------------------
-REM  3. Menu - o projeto tem dois programas, um por disciplina.
+REM  3. Menu
 REM ---------------------------------------------------------------------------
 :MENU
 echo  ----------------------------------------------------------
 echo.
 echo   [1]  Aplicativo web        mapa, recarga, carteira e pagamento
-echo   [2]  Gestao de sessoes     Estruturas de Dados - busca, ordenacao, Big-O
-echo   [3]  Rodar os testes       suite completa no terminal
-echo   [4]  Sair
+echo   [2]  Rodar os testes       suite completa no terminal
+echo   [3]  Sair
 echo.
 set "OPCAO="
 set /p "OPCAO=  Escolha [1]: "
 if not defined OPCAO set "OPCAO=1"
 
 if "%OPCAO%"=="1" goto WEB
-if "%OPCAO%"=="2" goto CLI
-if "%OPCAO%"=="3" goto TESTES
-if "%OPCAO%"=="4" exit /b 0
+if "%OPCAO%"=="2" goto TESTES
+if "%OPCAO%"=="3" exit /b 0
 
 echo.
-echo  Opcao invalida: "%OPCAO%". Escolha de 1 a 4.
+echo  Opcao invalida: "%OPCAO%". Escolha de 1 a 3.
 echo.
 goto MENU
 
@@ -119,17 +113,7 @@ echo  ----------------------------------------------------------
 echo.
 
 REM O proprio app.py imprime as contas de demonstracao no banner.
-cd /d "%~dp0%PASTA_APP%"
 %PY% app.py
-goto FIM
-
-REM ---------------------------------------------------------------------------
-:CLI
-REM  Entrega de Estruturas de Dados. Le o historico de chargegrid.db se existir.
-REM ---------------------------------------------------------------------------
-echo.
-cd /d "%~dp0%PASTA_CLI%"
-%PY% gestao_sessoes.py
 goto FIM
 
 REM ---------------------------------------------------------------------------
@@ -137,7 +121,6 @@ REM ---------------------------------------------------------------------------
 REM ---------------------------------------------------------------------------
 echo.
 echo  ----------------------------------------------------------
-cd /d "%~dp0%PASTA_APP%"
 %PY% -m pytest test_chargegrid.py -q
 goto FIM
 
