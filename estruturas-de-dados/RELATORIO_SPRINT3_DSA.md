@@ -25,42 +25,52 @@ para o código no repositório.
 
 | Item do enunciado | Onde está |
 |---|---|
-| 1. Estrutura da sessão (classe) | [`gestao_sessoes.py`, `class Sessao`, linha 60](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L60-L116) |
-| 2. Registro de múltiplas sessões (lista) | [`sessoes: List[Sessao]`, linha 134](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L125-L148) · `append` em `cadastrar_sessao()`, `len()` em `listar_sessoes()` |
-| 3. Menu principal com laço | [`MENU` linha 701 e `main()` linha 717](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L701-L765) — o `while True` está na linha 741 |
-| 4. Busca — sequencial | [`busca_sequencial()`, linha 209](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L209-L231) |
-| 4. Busca — binária | [`busca_binaria()`, linha 234](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L234-L268) |
-| 5. Ordenação — Bubble Sort | [`bubble_sort()`, linha 286](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L286-L317) |
-| 5. Ordenação — Insertion Sort | [`insertion_sort()`, linha 320](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L320-L358) |
-| 5. Critério escolhido pelo usuário | [`CRITERIOS`, linha 278](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L278-L282) — ID, energia, custo e tempo |
-| 6. Estatísticas da estação | [`estatisticas()`, linha 372](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L372-L419) e `mostrar_estatisticas()`, linha 612 |
+| 1. Estrutura da sessão (classe) | [`gestao_sessoes.py`, `class Sessao`, linha 64](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L64-L120) |
+| 2. Registro de múltiplas sessões (lista) | [`sessoes: List[Sessao]`, linha 138](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L129-L152) · `append` em `cadastrar_sessao()`, `len()` em `listar_sessoes()` |
+| 3. Menu principal com laço | [`MENU` linha 707 e `main()` linha 723](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L707-L771) — o `while True` está na linha 747 |
+| 4. Busca — sequencial | [`busca_sequencial()`, linha 215](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L215-L237) |
+| 4. Busca — binária | [`busca_binaria()`, linha 240](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L240-L274) |
+| 5. Ordenação — Bubble Sort | [`bubble_sort()`, linha 292](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L292-L323) |
+| 5. Ordenação — Insertion Sort | [`insertion_sort()`, linha 326](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L326-L364) |
+| 5. Critério escolhido pelo usuário | [`CRITERIOS`, linha 284](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L284-L288) — ID, energia, custo e tempo |
+| 6. Estatísticas da estação | [`estatisticas()`, linha 378](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L378-L425) e `mostrar_estatisticas()`, linha 618 |
 | 7. Funções organizando as operações | tabela completa na seção 2 deste relatório |
-| 8. Tratamento de dados e validações | [`ler_numero()`, linha 433](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L433-L463) · `id_existe()` linha 146 · captura de exceção no laço do menu, `except` na linha 762 |
+| 8. Tratamento de dados e validações | [`ler_numero()`, linha 439](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L439-L469) · `id_existe()` linha 150 · captura de exceção no laço do menu, `except` na linha 768 |
 | 9. Análise de algoritmos (Big-O) | seção 5 deste relatório, e as docstrings dos quatro algoritmos no código |
-| 10. Comparação entre algoritmos | seção 6 deste relatório · medição executável em [`comparar_algoritmos()`, linha 641](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py#L641-L694) |
+| 10. Comparação entre algoritmos | seção 6 deste relatório · medição executável em [`comparar_algoritmos()`, linha 647](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py#L647-L700) |
 
 ### Arquivos da entrega
 
 | Arquivo | O que é |
 |---|---|
-| [`gestao_sessoes.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/gestao_sessoes.py) | **o programa desta Sprint** — 830 linhas, só biblioteca padrão |
-| [`RELATORIO_SPRINT3_DSA.md`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/RELATORIO_SPRINT3_DSA.md) | este documento |
-| [`RELATORIO_SPRINT3_DSA.pdf`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/RELATORIO_SPRINT3_DSA.pdf) | este documento em PDF |
-| [`test_chargegrid.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/test_chargegrid.py) | suíte do projeto; a classe `TestGestaoSessoes` cobre os algoritmos |
+| [`estruturas-de-dados/gestao_sessoes.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/gestao_sessoes.py) | **o programa desta Sprint** — 836 linhas, só biblioteca padrão |
+| [`estruturas-de-dados/RELATORIO_SPRINT3_DSA.md`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/RELATORIO_SPRINT3_DSA.md) | este documento |
+| [`estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf) | este documento em PDF |
+| [`aplicativo-web/test_chargegrid.py`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/aplicativo-web/test_chargegrid.py) | suíte do projeto; a classe `TestGestaoSessoes` cobre os algoritmos |
 | [`iniciar.bat`](https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3/blob/main/iniciar.bat) | dois cliques no Windows: instala o que falta e abre um menu |
 
-O restante do repositório é o aplicativo web das outras disciplinas da Sprint
-(Flask + SQLite). Ele **não** implementa os algoritmos avaliados aqui — usa
-`sorted()` livremente, o que o enunciado permite "nas demais partes do
-sistema". Os algoritmos escritos à mão estão todos em `gestao_sessoes.py`.
+O repositório está dividido em duas pastas, e a separação é justamente esta:
+
+- **`estruturas-de-dados/`** — a entrega desta disciplina. Um arquivo de
+  código e este relatório.
+- **`aplicativo-web/`** — o sistema das outras disciplinas da Sprint (Flask +
+  SQLite). Ele **não** implementa os algoritmos avaliados aqui: usa `sorted()`
+  livremente, o que o enunciado permite "nas demais partes do sistema".
+
+Todos os algoritmos escritos à mão estão em `gestao_sessoes.py`.
 
 ### Como executar
 
 ```
+cd estruturas-de-dados
 python gestao_sessoes.py
 ```
 
-Ou, no Windows, dois cliques em `iniciar.bat` e a opção **2** do menu.
+Ou, no Windows, dois cliques em `iniciar.bat` na raiz do projeto e a opção
+**2** do menu.
+
+No pacote de entrega (`.zip`) o programa está direto na raiz, junto com o
+banco de histórico — ali basta `python gestao_sessoes.py`.
 
 ---
 

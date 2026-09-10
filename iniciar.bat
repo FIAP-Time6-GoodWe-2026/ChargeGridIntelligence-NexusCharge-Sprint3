@@ -16,6 +16,10 @@ title ChargeGrid Intelligence - NexusCharge
 REM Trabalha sempre na pasta deste .bat, nao na pasta de onde ele foi chamado.
 cd /d "%~dp0"
 
+REM O projeto tem duas pastas: a entrega de Estruturas de Dados e o sistema.
+set "PASTA_CLI=estruturas-de-dados"
+set "PASTA_APP=aplicativo-web"
+
 echo.
 echo  ChargeGrid Intelligence - NexusCharge
 echo  Sprint 3 ^| FIAP + GoodWe EV Challenge 2026
@@ -115,6 +119,7 @@ echo  ----------------------------------------------------------
 echo.
 
 REM O proprio app.py imprime as contas de demonstracao no banner.
+cd /d "%~dp0%PASTA_APP%"
 %PY% app.py
 goto FIM
 
@@ -123,6 +128,7 @@ REM ---------------------------------------------------------------------------
 REM  Entrega de Estruturas de Dados. Le o historico de chargegrid.db se existir.
 REM ---------------------------------------------------------------------------
 echo.
+cd /d "%~dp0%PASTA_CLI%"
 %PY% gestao_sessoes.py
 goto FIM
 
@@ -131,6 +137,7 @@ REM ---------------------------------------------------------------------------
 REM ---------------------------------------------------------------------------
 echo.
 echo  ----------------------------------------------------------
+cd /d "%~dp0%PASTA_APP%"
 %PY% -m pytest test_chargegrid.py -q
 goto FIM
 

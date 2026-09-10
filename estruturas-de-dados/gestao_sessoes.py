@@ -46,10 +46,14 @@ import sys
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-# Banco de histórico do aplicativo web, procurado ao lado deste arquivo.
-# É a única ligação com o resto do projeto, e ela é opcional: sem o arquivo,
-# o programa abre com a lista vazia.
+# Banco de histórico do aplicativo web. É a única ligação com o resto do
+# projeto, e ela é opcional: sem o arquivo, o programa abre com a lista vazia.
+#
+# Dois lugares são procurados, nesta ordem: ao lado deste arquivo (é assim que
+# o pacote de entrega vem montado) e na pasta do aplicativo web (é onde o
+# banco vive no repositório). Quem procura só num lugar quebra no outro.
 BANCO = "chargegrid.db"
+LOCAIS_DO_BANCO = (".", "../aplicativo-web")
 
 # ---------------------------------------------------------------------------
 # 1. ESTRUTURA DE DADOS — a sessão de recarga
@@ -161,8 +165,10 @@ def carregar_do_banco() -> List[Sessao]:
     precisa rodar em qualquer máquina com Python, mesmo sem o app web ter
     sido executado antes.
     """
-    caminho = pathlib.Path(__file__).with_name(BANCO)
-    if not caminho.exists():
+    aqui = pathlib.Path(__file__).resolve().parent
+    caminho = next((c for c in (aqui / p / BANCO for p in LOCAIS_DO_BANCO)
+                    if c.exists()), None)
+    if caminho is None:
         return []
 
     try:

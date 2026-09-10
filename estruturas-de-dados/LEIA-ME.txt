@@ -12,7 +12,7 @@
   O QUE ABRIR PRIMEIRO
 -------------------------------------------------------------------------------
 
-  RELATORIO_SPRINT3_DSA.pdf
+  estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf
 
   A primeira secao do relatorio e uma tabela que aponta, para cada um dos 10
   itens do enunciado, o arquivo, a funcao e a linha exata onde ele esta - com
@@ -25,11 +25,12 @@
 
   Requisito: Python 3.11 ou superior. Nenhuma biblioteca externa.
 
+      cd estruturas-de-dados
       python gestao_sessoes.py
 
   O programa abre um menu com 7 opcoes. Ele ja inicia com 180 sessoes de
-  recarga carregadas de chargegrid.db, entao listar, buscar, ordenar e as
-  estatisticas tem dados de verdade desde o primeiro segundo.
+  recarga carregadas do banco do aplicativo web, entao listar, buscar, ordenar
+  e as estatisticas tem dados de verdade desde o primeiro segundo.
 
   Para conferir os algoritmos sem abrir o menu:
 
@@ -39,12 +40,19 @@
   algoritmo faz em entradas de tamanho crescente. E de la que saem todos os
   numeros da analise de complexidade do relatorio - nenhum foi estimado.
 
+  No Windows, dois cliques em iniciar.bat abrem um menu com o aplicativo web,
+  este programa e a suite de testes.
+
 
 -------------------------------------------------------------------------------
-  ARQUIVOS NESTA PASTA
+  ESTRUTURA DO PACOTE
 -------------------------------------------------------------------------------
 
-  gestao_sessoes.py            O programa da Sprint. 830 linhas, so
+  Duas pastas, uma por natureza de entrega.
+
+  estruturas-de-dados/         A ENTREGA DESTA DISCIPLINA
+
+    gestao_sessoes.py          O programa da Sprint. 836 linhas, so
                                biblioteca padrao. Contem os quatro
                                algoritmos escritos a mao:
                                  - busca sequencial      O(n)
@@ -52,15 +60,22 @@
                                  - bubble sort           O(n2)
                                  - insertion sort        O(n2) / O(n)
 
-  chargegrid.db                Historico de 180 sessoes de recarga, para o
-                               programa abrir com dados. E opcional: sem ele
-                               o programa abre com a lista vazia e o cadastro
-                               pelo menu preenche.
+    RELATORIO_SPRINT3_DSA.pdf  O relatorio. 12 paginas.
+    RELATORIO_SPRINT3_DSA.md   O mesmo relatorio em texto.
 
-  RELATORIO_SPRINT3_DSA.pdf    O relatorio. 11 paginas.
-  RELATORIO_SPRINT3_DSA.md     O mesmo relatorio em texto.
+  aplicativo-web/              O SISTEMA (outras disciplinas da Sprint)
 
-  aplicativo-web/              O restante do projeto. Ver abaixo.
+    Aplicacao Flask com mapa de eletropostos, controle dinamico de potencia
+    entre conectores, tarifacao em tres eixos, carteira com cashback, reserva
+    de conector com sinal, pagamento e simulacao do protocolo Modbus TCP.
+
+    chargegrid.db              Historico de 180 sessoes. E daqui que o
+                               programa da Sprint le os dados. Sem este
+                               arquivo ele abre com a lista vazia, e o
+                               cadastro pelo menu preenche.
+
+  iniciar.bat                  Menu de inicializacao para Windows.
+  README.md                    Documentacao geral do projeto.
 
 
 -------------------------------------------------------------------------------
@@ -68,32 +83,25 @@
 -------------------------------------------------------------------------------
 
   O ChargeGrid Intelligence e um projeto unico atendendo varias disciplinas da
-  Sprint. A pasta aplicativo-web/ tem o sistema completo: aplicacao Flask com
-  mapa de eletropostos, controle dinamico de potencia entre conectores,
-  tarifacao em tres eixos, carteira com cashback, reserva de conector com
-  sinal, pagamento e simulacao do protocolo Modbus TCP.
+  Sprint. O aplicativo NAO faz parte da avaliacao desta disciplina, e usa
+  sorted() livremente - o que o enunciado permite "nas demais partes do
+  sistema". Todos os algoritmos avaliados aqui estao em gestao_sessoes.py,
+  escritos a mao.
 
-  Ele NAO faz parte da avaliacao desta disciplina, e usa sorted() livremente -
-  o que o enunciado permite "nas demais partes do sistema". Todos os
-  algoritmos avaliados aqui estao em gestao_sessoes.py, escritos a mao.
+  Esta na entrega por dois motivos: e de onde vem o historico real que o
+  programa organiza, e mostra de onde esses dados saem.
 
-  Esta na entrega por dois motivos: e de onde vem o chargegrid.db com o
-  historico real, e mostra de onde os dados que o programa organiza saem.
-
-  Para rodar o aplicativo web, se houver interesse:
+  Para rodar, se houver interesse:
 
       cd aplicativo-web
       pip install flask pytest
       python app.py
       # abre em http://localhost:5001
 
-  No Windows, dois cliques em aplicativo-web\iniciar.bat abrem um menu com o
-  aplicativo, o programa desta Sprint e a suite de testes.
-
   Contas de demonstracao (senha 1234 para todas): amanda, allan, jose, mylon.
 
-  A suite de testes do projeto tem 146 testes, dos quais 16 cobrem os
-  algoritmos desta Sprint (classe TestGestaoSessoes):
+  A suite tem 146 testes, dos quais 16 cobrem os algoritmos desta Sprint
+  (classe TestGestaoSessoes) e 4 cobrem a tabela ordenavel do relatorio:
 
       cd aplicativo-web
       pytest test_chargegrid.py

@@ -1609,7 +1609,11 @@ class TestGestaoSessoes:
         entrega. Este teste é a guarda contra alguém "simplificar" depois.
         """
         import pathlib
-        fonte = pathlib.Path("gestao_sessoes.py").read_text(encoding="utf-8")
+        # Caminho a partir deste arquivo, não do diretório de trabalho: o CLI
+        # mora na pasta irmã, e `pytest` pode ser chamado de qualquer lugar.
+        fonte = (pathlib.Path(__file__).resolve().parent.parent
+                 / "estruturas-de-dados" / "gestao_sessoes.py"
+                 ).read_text(encoding="utf-8")
         codigo = "\n".join(
             linha for linha in fonte.splitlines()
             if not linha.lstrip().startswith("#")

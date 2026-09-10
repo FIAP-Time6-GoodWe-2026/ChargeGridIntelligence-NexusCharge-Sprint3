@@ -5,8 +5,8 @@
 
 📦 **Repositório:** https://github.com/FIAP-Time6-GoodWe-2026/ChargeGridIntelligence-NexusCharge-Sprint3
 
-📄 **Entrega de Estruturas de Dados:** [`gestao_sessoes.py`](gestao_sessoes.py) ·
-[relatório](RELATORIO_SPRINT3_DSA.md) ([PDF](RELATORIO_SPRINT3_DSA.pdf))
+📄 **Entrega de Estruturas de Dados:** [`estruturas-de-dados/gestao_sessoes.py`](estruturas-de-dados/gestao_sessoes.py) ·
+[relatório](estruturas-de-dados/RELATORIO_SPRINT3_DSA.md) ([PDF](estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf))
 
 ChargeGrid Intelligence resolve um problema concreto do segmento comercial e de
 varejo de eletropostos: a ausência de mecanismos integrados para **orquestrar
@@ -62,9 +62,9 @@ A opção 1 sobe o servidor e abre o navegador sozinho.
 ```bash
 pip install flask pytest
 
-python app.py             # aplicativo web — http://localhost:5001
-python gestao_sessoes.py  # gestão de sessões (Estruturas de Dados)
-pytest test_chargegrid.py # 146 testes
+cd aplicativo-web && python app.py             # http://localhost:5001
+cd estruturas-de-dados && python gestao_sessoes.py
+cd aplicativo-web && pytest test_chargegrid.py # 146 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -134,33 +134,44 @@ Na tela de login, clicar em uma conta preenche e envia o formulário.
 Arquitetura modular em camadas, sem dependências circulares. Nenhuma regra de
 negócio vive na camada web.
 
+O projeto tem duas pastas, uma por natureza de entrega:
+
 ```
-models.py            Entidades e enums (ChargingSession, SessionStatus, UserType)
-   ↑
-session_manager.py   Ciclo de vida das sessões e acúmulo de energia
-   ↑
-power_manager.py     Controle de demanda: limite, throttle, rebalanceamento
-   ↑
-modbus_simulator.py  Simulação do protocolo Modbus TCP (registradores HCA G2)
+iniciar.bat               Menu de inicialização para Windows (web · CLI · testes)
 
-pricing_engine.py    Tarifação dinâmica em 3 eixos
-logica_recarga.py    Lógica de simulação do Sprint 1
+estruturas-de-dados/      ── entrega da disciplina de Estruturas de Dados
+  gestao_sessoes.py       Busca, ordenação e Big-O escritos à mão · só stdlib
+  RELATORIO_SPRINT3_DSA   O relatório, em .md e .pdf
+  LEIA-ME.txt             Guia do pacote de entrega
 
-iniciar.bat          Menu de inicialização para Windows (web · CLI · testes)
-db.py                Persistência SQLite (stdlib) — carteira, reservas, histórico
-auth.py              Contas e autenticação (mockup acadêmico)
-wallet.py            Carteira NexusCoin: saldo, débito, crédito, cashback
-reservations.py      Reserva de conector com sinal e expiração preguiçosa
-billing.py           Composição da cobrança de uma sessão encerrada
-qr.py                QR Code simulado em SVG (Pix)
-   ↑
-app.py               Camada web Flask — rotas, validação e orquestração
-templates/           14 telas + partial de cabeçalho
-test_chargegrid.py   146 testes automatizados
-seed_historico.py    Gerador de histórico sintético para as análises
+aplicativo-web/           ── o sistema
+  models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
+     ↑
+  session_manager.py      Ciclo de vida das sessões e acúmulo de energia
+     ↑
+  power_manager.py        Controle de demanda: limite, throttle, rebalanceamento
+     ↑
+  modbus_simulator.py     Simulação do protocolo Modbus TCP (registradores HCA G2)
 
-gestao_sessoes.py    CLI de Estruturas de Dados — busca, ordenação e Big-O
+  pricing_engine.py       Tarifação dinâmica em 3 eixos
+  logica_recarga.py       Lógica de simulação do Sprint 1
+
+  db.py                   Persistência SQLite (stdlib) — carteira, reservas, histórico
+  auth.py                 Contas e autenticação (mockup acadêmico)
+  wallet.py               Carteira NexusCoin: saldo, débito, crédito, cashback
+  reservations.py         Reserva de conector com sinal e expiração preguiçosa
+  billing.py              Composição da cobrança de uma sessão encerrada
+  qr.py                   QR Code simulado em SVG (Pix)
+     ↑
+  app.py                  Camada web Flask — rotas, validação e orquestração
+  templates/              14 telas + partial de cabeçalho
+  test_chargegrid.py      146 testes automatizados
+  seed_historico.py       Gerador de histórico sintético para as análises
+  conftest.py             Põe estruturas-de-dados/ no sys.path da suíte
 ```
+
+Os módulos do aplicativo ficam lado a lado de propósito: são camadas, não um
+pacote. Empacotá-los renomearia 26 imports para arrumar uma listagem.
 
 ---
 
@@ -172,6 +183,7 @@ gerenciamento de sessões em terminal, com menu, sobre uma `list` de objetos
 `Sessao`.
 
 ```
+cd estruturas-de-dados
 python gestao_sessoes.py              # menu interativo
 python gestao_sessoes.py --autoteste  # verificação dos algoritmos
 ```
@@ -194,9 +206,9 @@ impede que alguém "simplifique" isso depois.
 A opção **6 — Comparar algoritmos** mede as comparações realmente executadas
 em entradas de tamanho crescente, e é de onde saem os números do relatório.
 
-📄 **[RELATORIO_SPRINT3_DSA.md](RELATORIO_SPRINT3_DSA.md)** — estrutura de
+📄 **[RELATORIO_SPRINT3_DSA.md](estruturas-de-dados/RELATORIO_SPRINT3_DSA.md)** — estrutura de
 dados escolhida, funcionamento, os dois algoritmos e a análise Big-O.
-Também em [PDF](RELATORIO_SPRINT3_DSA.pdf).
+Também em [PDF](estruturas-de-dados/RELATORIO_SPRINT3_DSA.pdf).
 
 ---
 
@@ -295,7 +307,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 ## 🧪 Testes
 
 ```bash
-pytest test_chargegrid.py -v      # ou pela interface, em /testes
+cd aplicativo-web && pytest test_chargegrid.py -v   # ou pela interface, em /testes
 ```
 
 **146 testes** em 19 classes. A suíte roda contra um banco temporário por teste,
