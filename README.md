@@ -157,8 +157,16 @@ test_chargegrid.py      130 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
-Os módulos do aplicativo ficam lado a lado de propósito: são camadas, não um
-pacote. Empacotá-los renomearia 26 imports para arrumar uma listagem.
+Os módulos ficam lado a lado de propósito. O grafo de dependência é uma
+estrela em volta do `app.py` — ele importa 12 dos 13 outros, `models.py` é
+usado por 8, `db.py` por 4, e todo o resto por 0, 1 ou 2. Não há subgrupo que
+converse mais consigo mesmo do que com o resto, então dividir por tema
+esconderia **6 dos 26 imports** de nível de módulo: os outros 20 continuariam
+atravessando a fronteira. Pasta que não esconde nada é gaveta, não camada.
+
+Virar um pacote `chargegrid/` esconderia 14 dos 26 — essa seria estrutura de
+verdade — ao custo de reescrever **173 linhas de import**, 145 delas na suíte
+de testes. Decidimos que não se paga nesta escala.
 
 ---
 
