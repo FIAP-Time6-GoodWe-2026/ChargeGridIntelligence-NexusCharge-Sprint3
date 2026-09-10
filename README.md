@@ -64,7 +64,7 @@ pip install flask pytest
 
 python app.py             # aplicativo web — http://localhost:5001
 python gestao_sessoes.py  # gestão de sessões (Estruturas de Dados)
-pytest test_chargegrid.py # 142 testes
+pytest test_chargegrid.py # 146 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -156,7 +156,7 @@ qr.py                QR Code simulado em SVG (Pix)
    ↑
 app.py               Camada web Flask — rotas, validação e orquestração
 templates/           14 telas + partial de cabeçalho
-test_chargegrid.py   142 testes automatizados
+test_chargegrid.py   146 testes automatizados
 seed_historico.py    Gerador de histórico sintético para as análises
 
 gestao_sessoes.py    CLI de Estruturas de Dados — busca, ordenação e Big-O
@@ -298,7 +298,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest test_chargegrid.py -v      # ou pela interface, em /testes
 ```
 
-**126 testes** em 17 classes. A suíte roda contra um banco temporário por teste,
+**146 testes** em 19 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |

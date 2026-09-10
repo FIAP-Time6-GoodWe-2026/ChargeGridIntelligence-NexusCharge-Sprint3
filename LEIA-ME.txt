@@ -57,7 +57,7 @@
                                o programa abre com a lista vazia e o cadastro
                                pelo menu preenche.
 
-  RELATORIO_SPRINT3_DSA.pdf    O relatorio. 10 paginas.
+  RELATORIO_SPRINT3_DSA.pdf    O relatorio. 11 paginas.
   RELATORIO_SPRINT3_DSA.md     O mesmo relatorio em texto.
 
   aplicativo-web/              O restante do projeto. Ver abaixo.
@@ -92,7 +92,7 @@
 
   Contas de demonstracao (senha 1234 para todas): amanda, allan, jose, mylon.
 
-  A suite de testes do projeto tem 142 testes, dos quais 16 cobrem os
+  A suite de testes do projeto tem 146 testes, dos quais 16 cobrem os
   algoritmos desta Sprint (classe TestGestaoSessoes):
 
       cd aplicativo-web

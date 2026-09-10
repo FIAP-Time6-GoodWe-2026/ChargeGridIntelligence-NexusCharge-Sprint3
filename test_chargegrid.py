@@ -1727,3 +1727,59 @@ class TestGestaoSessoes:
     def test_autoteste_do_modulo_passa(self):
         from gestao_sessoes import autoteste
         autoteste()   # levanta AssertionError se algum algoritmo regredir
+
+
+class TestRelatorioOrdenavel:
+    """
+    Contrato de markup do qual o JS de ordenação/busca do relatório depende.
+
+    O comportamento em si é verificado no navegador; estes testes guardam o
+    que o Python renderiza — se um `data-valor` sumir, a ordenação numérica
+    passa a comparar zeros em silêncio, sem erro nenhum na tela.
+    """
+
+    @pytest.fixture
+    def com_sessao(self, client):
+        """
+        Uma sessão ativa e o HTML do relatório.
+
+        Sob o pytest o seed de demonstração não roda: sem criar a sessão
+        aqui, o `{% if sessoes %}` do template esconde a tabela inteira e os
+        testes verificariam uma tela vazia.
+        """
+        import app as A
+        from models import UserType
+        s = A.sm.create_session("P2-C1", "ABC1D23", "Amanda",
+                                UserType.SUBSCRIBER, 11.0, owner="amanda")
+        A.sm.start_charging(s.session_id, 11.0, 1.2345)
+        A.sm.update_energy(s.session_id, 7.5)
+        return s, client.get("/relatorio").data.decode()
+
+    def test_cabecalhos_sao_ordenaveis(self, com_sessao):
+        _, html = com_sessao
+        assert html.count('class="ordenavel"') == 10, "as 10 colunas ordenáveis"
+        for col in range(10):
+            assert f'data-col="{col}"' in html
+        assert html.count('data-tipo="num"') == 5, "5 colunas numéricas"
+
+    def test_colunas_numericas_carregam_data_valor(self, com_sessao):
+        s, html = com_sessao
+        linha = html.split(f'data-session-id="{s.session_id}"')[1].split("</tr>")[0]
+
+        # O valor cru precisa estar no atributo, não só formatado no texto
+        assert 'data-valor="11.0"' in linha
+        assert 'data-valor="7.5"' in linha
+        assert 'data-valor="1.2345"' in linha
+        assert linha.count("data-valor") == 5
+
+    def test_busca_esta_na_tela(self, com_sessao):
+        _, html = com_sessao
+        assert 'id="busca-sessao"' in html
+        assert 'id="contagem-sessoes"' in html
+        assert 'aria-label="Buscar sessão' in html, "campo precisa de rótulo acessível"
+
+    def test_sem_sessoes_nao_mostra_controles(self, client):
+        """Busca e contagem sobre uma tabela que não existe seria ruído."""
+        html = client.get("/relatorio").data.decode()
+        assert 'id="busca-sessao"' not in html
+        assert "Nenhuma sessão registrada" in html

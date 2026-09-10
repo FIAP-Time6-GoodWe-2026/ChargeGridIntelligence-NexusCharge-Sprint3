@@ -475,6 +475,40 @@ o crescimento no pior caso e ignora constantes. Dois algoritmos O(n²) podem
 ter desempenhos muito diferentes no caso médio — e é por isso que a análise
 assintótica orienta a escolha, mas não substitui a medição.
 
+### A mesma operação, das duas formas
+
+O projeto tem hoje os dois lados do mesmo problema, e a comparação entre eles
+diz mais do que qualquer um sozinho.
+
+A tela `/relatorio` do aplicativo web lista as mesmas sessões e ganhou
+ordenação por coluna e busca. Lá, ordenar é uma linha:
+
+```javascript
+linhas.sort(function (a, b) { ... });
+```
+
+O `sort` nativo é um Timsort nos motores atuais: **O(n log n)**, estável, e
+com anos de uso e correções por trás. Com 200 sessões são cerca de 1.500
+comparações, contra as 19.900 do bubble sort medido na seção anterior — uma
+diferença de mais de dez vezes que só cresce com o volume.
+
+Isso não torna o exercício desta Sprint decorativo; torna a lição concreta:
+
+- **Reimplementar ordenação em produção é trabalho a mais para um resultado
+  pior.** Quando existe uma implementação O(n log n) pronta, escrever um
+  O(n²) é uma escolha ruim, e saber *por quê* exige ter escrito o O(n²).
+- **A classe de complexidade é o que decide a escala, não a linguagem nem a
+  máquina.** Um bubble sort em C compilado perde para um Timsort em Python
+  interpretado assim que `n` cresce o suficiente — porque n² alcança
+  n log n independentemente da constante.
+- **Saber ler o algoritmo é o que permite escolher.** Quem nunca contou as
+  comparações de um laço aninhado não tem como estimar se uma rotina vai
+  aguentar dez mil registros.
+
+O `gestao_sessoes.py` responde "como funciona por dentro". O `/relatorio`
+responde "o que se usa quando o objetivo é entregar". As duas respostas são
+necessárias, e são diferentes.
+
 ### Tamanho da entrada → operações → desempenho
 
 ```
