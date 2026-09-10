@@ -42,8 +42,8 @@ instaladas automaticamente na primeira execução. O banco de dados usa o módul
 
 ### Windows
 
-Dois cliques em **`aplicativo-web/iniciar.bat`**. Ele confere o Python,
-instala o que faltar e abre um menu:
+Dois cliques em **`iniciar.bat`**. Ele confere o Python, instala o que faltar
+e abre um menu:
 
 ```
  [1]  Aplicativo web        mapa, recarga, carteira e pagamento
@@ -58,8 +58,8 @@ A opção 1 sobe o servidor e abre o navegador sozinho.
 ```bash
 pip install flask pytest
 
-cd aplicativo-web && python app.py   # http://localhost:5001
-cd aplicativo-web && pytest -q       # 130 testes
+python app.py    # http://localhost:5001
+pytest -q        # 130 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -130,31 +130,31 @@ Arquitetura modular em camadas, sem dependências circulares. Nenhuma regra de
 negócio vive na camada web.
 
 ```
-aplicativo-web/
-  iniciar.bat             Menu de inicialização para Windows (web · testes)
+iniciar.bat             Menu de inicialização para Windows (web · testes)
 
-  models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
-     ↑
-  session_manager.py      Ciclo de vida das sessões e acúmulo de energia
-     ↑
-  power_manager.py        Controle de demanda: limite, throttle, rebalanceamento
-     ↑
-  modbus_simulator.py     Simulação do protocolo Modbus TCP (registradores HCA G2)
+models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
+   ↑
+session_manager.py      Ciclo de vida das sessões e acúmulo de energia
+   ↑
+power_manager.py        Controle de demanda: limite, throttle, rebalanceamento
+   ↑
+modbus_simulator.py     Simulação do protocolo Modbus TCP (registradores HCA G2)
 
-  pricing_engine.py       Tarifação dinâmica em 3 eixos
-  logica_recarga.py       Lógica de simulação do Sprint 1
+pricing_engine.py       Tarifação dinâmica em 3 eixos
+logica_recarga.py       Lógica de simulação do Sprint 1
 
-  db.py                   Persistência SQLite (stdlib) — carteira, reservas, histórico
-  auth.py                 Contas e autenticação (mockup acadêmico)
-  wallet.py               Carteira NexusCoin: saldo, débito, crédito, cashback
-  reservations.py         Reserva de conector com sinal e expiração preguiçosa
-  billing.py              Composição da cobrança de uma sessão encerrada
-  qr.py                   QR Code simulado em SVG (Pix)
-     ↑
-  app.py                  Camada web Flask — rotas, validação e orquestração
-  templates/              14 telas + partial de cabeçalho
-  test_chargegrid.py      130 testes automatizados
-  seed_historico.py       Gerador de histórico sintético para as análises
+db.py                   Persistência SQLite (stdlib) — carteira, reservas, histórico
+auth.py                 Contas e autenticação (mockup acadêmico)
+wallet.py               Carteira NexusCoin: saldo, débito, crédito, cashback
+reservations.py         Reserva de conector com sinal e expiração preguiçosa
+billing.py              Composição da cobrança de uma sessão encerrada
+qr.py                   QR Code simulado em SVG (Pix)
+   ↑
+app.py                  Camada web Flask — rotas, validação e orquestração
+templates/              14 telas + partial de cabeçalho
+static/                 favicon
+test_chargegrid.py      130 testes automatizados
+seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
 Os módulos do aplicativo ficam lado a lado de propósito: são camadas, não um
@@ -257,7 +257,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 ## 🧪 Testes
 
 ```bash
-cd aplicativo-web && pytest -v   # ou pela interface, em /testes
+pytest -v   # ou pela interface, em /testes
 ```
 
 **130 testes** em 18 classes. A suíte roda contra um banco temporário por teste,
