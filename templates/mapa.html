@@ -140,68 +140,6 @@
         linear-gradient(90deg,  transparent 67%, var(--cor-mapa-road-minor) 67%, var(--cor-mapa-road-minor) 68%, transparent 68%);
     pointer-events: none;
 }
-
-/* ====================================================================
-   PINS DE LOCALIZAÇÃO
-   ==================================================================== */
-.pin {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    cursor: pointer;
-    z-index: 10;
-    transition: transform 0.2s ease, filter 0.2s ease;
-}
-
-.pin:hover { transform: translate(-50%, -100%) scale(1.12); z-index: 20; }
-
-.pin-marker { position: relative; width: 44px; height: 56px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.28)); }
-.pin-svg    { width: 100%; height: 100%; }
-
-.pin-label {
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--cor-card);
-    color: var(--cor-texto);
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    box-shadow: var(--sombra-md);
-    white-space: nowrap;
-    margin-top: 4px;
-    border: 1px solid var(--cor-borda);
-}
-
-.pin.disponivel .pin-label {
-    background: var(--cor-livre);
-    color: white;
-    border-color: var(--cor-livre);
-}
-
-.pin.indisponivel { opacity: 0.75; }
-.pin.indisponivel:hover { opacity: 1; }
-/* Throttle: pin âmbar pulsante (aplica a qualquer pin com controle ativo,
-   inclusive lotado) */
-.pin.throttle .pin-marker::after,
-.pin.tem-throttle .pin-marker::after {
-    content: '⚡';
-    position: absolute;
-    top: -6px; right: -8px;
-    font-size: 12px;
-    background: #F59E0B;
-    border-radius: 50%;
-    width: 18px; height: 18px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10px;
-    box-shadow: 0 0 0 2px white;
-    animation: throttlePulse 1.8s ease infinite;
-}
-@keyframes throttlePulse {
-    0%, 100% { box-shadow: 0 0 0 2px white, 0 0 0 4px rgba(245,158,11,0); }
-    50%       { box-shadow: 0 0 0 2px white, 0 0 0 6px rgba(245,158,11,0.4); }
-}
 /* Station card indisponivel: mantém cursor pointer (clicável) */
 .station-card.indisponivel { opacity: 0.85; cursor: pointer; }
 .station-card.indisponivel:hover { opacity: 1; }
@@ -215,24 +153,6 @@
 }
 [data-theme="dark"] .throttle-badge {
     background: rgba(245,158,11,0.2); color: #FCD34D;
-}
-
-/* Pulso animado no pin disponível */
-.pin.disponivel .pin-marker::before {
-    content: '';
-    position: absolute;
-    bottom: 6px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 36px; height: 36px;
-    border-radius: 50%;
-    background: rgba(16, 185, 129, 0.3);
-    animation: pulsaPin 2s ease-out infinite;
-}
-
-@keyframes pulsaPin {
-    0%   { transform: translateX(-50%) scale(0.8); opacity: 1; }
-    100% { transform: translateX(-50%) scale(2.2); opacity: 0; }
 }
 
 /* Marcador "Você está aqui" */
@@ -386,25 +306,6 @@
     z-index: 2;
 }
 
-/* Dois anéis concêntricos que expandem para fora */
-.pulse-ring {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%) scale(1);
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    border: 2px solid #2563EB;
-    opacity: 0;
-    animation: pulseRing 2.4s cubic-bezier(0.22,1,0.36,1) infinite;
-}
-.pulse-ring:nth-child(2) { animation-delay: 0s; }
-.pulse-ring:nth-child(3) { animation-delay: 0.8s; }
-
-@keyframes pulseRing {
-    0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.7; }
-    100% { transform: translate(-50%, -50%) scale(3.8); opacity: 0;   }
-}
-
 .user-label {
     position: absolute;
     top: -32px; left: 50%;
@@ -418,70 +319,6 @@
     white-space: nowrap;
     pointer-events: none;
 }
-
-/* ====================================================================
-   TOOLTIP DOS PINS
-   ==================================================================== */
-.pin-tooltip {
-    position: absolute;
-    background: var(--cor-card);
-    border: 1px solid var(--cor-borda);
-    border-radius: 10px;
-    padding: 12px 14px;
-    box-shadow: var(--sombra-lg);
-    pointer-events: none;
-    z-index: 50;
-    width: 210px;
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-    transition: opacity 0.18s ease, transform 0.18s ease;
-}
-.pin-tooltip.visible {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-}
-.pin-tooltip-name {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--cor-texto);
-    margin-bottom: 4px;
-    line-height: 1.3;
-}
-.pin-tooltip-address {
-    font-size: 0.75rem;
-    color: var(--cor-texto-secundario);
-    margin-bottom: 10px;
-    line-height: 1.4;
-}
-.pin-tooltip-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.78rem;
-    padding: 4px 0;
-}
-.pin-tooltip-row + .pin-tooltip-row {
-    border-top: 1px solid var(--cor-borda);
-}
-.pin-tooltip-key   { color: var(--cor-texto-secundario); }
-.pin-tooltip-val   { font-weight: 600; color: var(--cor-texto); }
-.pin-tooltip-val.disponivel { color: var(--cor-livre-texto); }
-.pin-tooltip-val.indisponivel { color: #EF4444; }
-
-/* Seta apontando para o pin */
-.pin-tooltip::after {
-    content: '';
-    position: absolute;
-    bottom: -7px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-top: 7px solid var(--cor-card);
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.06));
-}
-
-/* Cartão oculto quando filtro exclui o pin */
-.pin.filtered-out { display: none; }
 .station-card.filtered-out { display: none; }
 
 /* Filtro de assinante: posto sem conector C5 livre — visível, mas atenuado,
@@ -527,8 +364,7 @@
     .container { padding: 16px; gap: 16px; }
     .header { padding: 16px; }
     .header h1 { font-size: 1.1rem; }
-}
-</style>
+}</style>
 {% endblock %}
 
 

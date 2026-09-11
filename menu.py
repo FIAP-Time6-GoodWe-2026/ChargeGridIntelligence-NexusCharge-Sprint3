@@ -5,22 +5,20 @@
 # =============================================================================
 
 """
-Segundo ponto de entrada do ChargeGrid Intelligence: um menu de terminal sobre
-o MESMO sistema que a interface web usa.
+Menu de terminal do ChargeGrid Intelligence — segundo ponto de entrada do
+mesmo sistema que a interface web serve.
 
-Não é um programa paralelo escrito para a prova. As sessões são objetos
-`models.ChargingSession`, ficam guardadas na lista de `SessionManager`, o
-histórico vem de `db.carregar_sessoes()` e a busca e a ordenação são as de
-`algoritmos.py` — as mesmas que rodam em produção no `SessionManager.
-get_session` e no `PowerManager.rebalance`.
+As sessões são objetos `models.ChargingSession`, ficam na lista do
+`SessionManager`, o histórico vem de `db.carregar_sessoes()` e a busca e a
+ordenação são as de `algoritmos.py` — as mesmas que o `get_session` e o
+`rebalance` usam.
 
 Este módulo **não importa Flask**. Roda com Python puro, sem nenhuma
 dependência instalada: `import` de `algoritmos`, `models`, `session_manager`,
 `db` (sqlite3 é stdlib) e nada mais.
 
 Uso:
-    python menu.py              menu interativo
-    python menu.py --autoteste  bateria de asserções, sem abrir o menu
+    python menu.py
 
 O menu é somente leitura em relação ao banco: a sessão cadastrada na opção 1
 vive na memória daquela execução. Isso é deliberado — quem escreve no
@@ -47,8 +45,7 @@ LARGURA = 79
 
 # Console do Windows nem sempre está em UTF-8 (o padrão em pt-BR é cp850).
 # Trocar apenas a política de erro mantém a página de código do console e
-# impede que um caractere não representável derrube o programa — item 8 do
-# enunciado: o programa não pode encerrar inesperadamente.
+# impede que um caractere não representável derrube o programa.
 try:
     sys.stdout.reconfigure(errors="replace")
 except (AttributeError, OSError):   # pragma: no cover - varia por plataforma
@@ -69,7 +66,7 @@ def aviso(texto: str) -> None:
 
 
 def exibir_menu() -> None:
-    """Mostra as opções disponíveis (formato do enunciado, com uma a mais)."""
+    """Mostra as opções disponíveis."""
     print()
     print("=" * 37)
     print("        ESTAÇÃO DE RECARGA".ljust(37))
@@ -87,7 +84,7 @@ def exibir_menu() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Leitura validada de entrada (item 8 do enunciado)
+# Leitura validada de entrada
 # ---------------------------------------------------------------------------
 
 TENTATIVAS_MAXIMAS = 3
@@ -127,10 +124,10 @@ def ler_numero(rotulo: str, minimo: Optional[float] = None,
     """
     Lê um número do teclado, validando tipo e faixa, com até 3 tentativas.
 
-    Cobre três das situações exigidas pelo item 8 do enunciado:
+    Cobre as três formas de o operador errar aqui:
         - texto onde se espera número  → `ValueError` capturado
         - valor fora da faixa          → recusado com a faixa na mensagem
-        - desistência do usuário       → Enter vazio cancela
+        - desistência                  → Enter vazio cancela
 
     Args:
         rotulo  : pergunta exibida
@@ -215,8 +212,8 @@ def detalhar(sessao: ChargingSession) -> None:
     """
     Imprime TODOS os dados da sessão.
 
-    O item 4 do enunciado exige que a busca "exiba os dados da sessão
-    encontrada" — não apenas confirme que existe.
+    Achar a sessão e só dizer "encontrada" não serve para nada: quem
+    procura quer ver o registro.
     """
     print()
     print(f"  {'ID (número)':<22}: {sessao.numero}")
@@ -301,7 +298,7 @@ def cadastrar_sessao(gerenciador: SessionManager) -> None:
         return
     numero = int(numero)
 
-    # Validação de ID duplicado — via busca sequencial (item 8 do enunciado)
+    # Validação de ID duplicado — via busca sequencial
     if algoritmos.numero_existe(colecao, numero):
         aviso(f"Já existe sessão com ID {numero}. Cadastro cancelado.")
         return
@@ -378,9 +375,7 @@ def listar_sessoes(gerenciador: SessionManager) -> None:
     """
     Lista a coleção na ordem atual de armazenamento.
 
-    A contagem usa `len()` sobre a lista, como o enunciado pede
-    explicitamente ("o sistema deve saber quantas sessões estão
-    armazenadas").
+    A contagem sai de `len()` sobre a lista.
     """
     colecao = gerenciador.sessions
     titulo(f"SESSÕES ARMAZENADAS: {len(colecao)}")
@@ -470,7 +465,7 @@ def ordenar_sessoes(gerenciador: SessionManager) -> None:
     Ordena a coleção pelo critério e algoritmo escolhidos pelo usuário.
 
     A ordenação é **in-place** sobre a lista viva do `SessionManager`: a nova
-    ordem persiste para as demais opções do menu, como o enunciado espera.
+    ordem persiste para as demais opções do menu.
     """
     colecao = gerenciador.sessions
     titulo("ORDENAR SESSÕES")
@@ -553,9 +548,9 @@ def comparar_algoritmos(gerenciador: SessionManager) -> None:
     """
     Mede busca e ordenação sobre a coleção real, em vários tamanhos de entrada.
 
-    É a evidência empírica do item 10 do enunciado: relaciona tamanho da
-    entrada, número de operações, classe de complexidade e tempo. Os números
-    que esta opção imprime são os que aparecem no relatório.
+    Relaciona tamanho da entrada, número de operações, classe de
+    complexidade e tempo. Os números que esta opção imprime são os que
+    aparecem no relatório.
     """
     colecao = gerenciador.sessions
     titulo("COMPARAÇÃO DE ALGORITMOS")
@@ -629,7 +624,7 @@ def comparar_algoritmos(gerenciador: SessionManager) -> None:
 # Carregamento inicial
 # ---------------------------------------------------------------------------
 
-def carregar_colecao(silencioso: bool = False) -> SessionManager:
+def carregar_colecao() -> SessionManager:
     """
     Monta o `SessionManager` com o histórico do banco.
 
@@ -645,10 +640,9 @@ def carregar_colecao(silencioso: bool = False) -> SessionManager:
             gerenciador.registrar_historico(sessao)
         except ValueError:
             ignorados += 1   # ID repetido no banco: mantém o primeiro
-    if not silencioso:
-        print(f"  Histórico carregado: {len(gerenciador.sessions)} sessão(ões)"
-              + (f", {ignorados} ignorada(s) por ID repetido." if ignorados
-                 else "."))
+    print(f"  Histórico carregado: {len(gerenciador.sessions)} sessão(ões)"
+          + (f", {ignorados} ignorada(s) por ID repetido." if ignorados
+             else "."))
     return gerenciador
 
 
@@ -715,144 +709,5 @@ def main() -> int:
             aviso("O menu continua ativo — nenhuma sessão foi perdida.")
 
 
-# ---------------------------------------------------------------------------
-# Autoteste (python menu.py --autoteste)
-# ---------------------------------------------------------------------------
-
-def autoteste() -> int:
-    """
-    Bateria de asserções sobre os algoritmos e a integração, sem abrir o menu.
-
-    Existe para que a entrega possa ser conferida em uma linha de comando, sem
-    `pytest` instalado. A suíte completa (`test_chargegrid.py`) cobre muito
-    mais; aqui ficam as verificações que provam os pontos avaliados na Sprint.
-    """
-    falhas: List[str] = []
-
-    def checar(rotulo: str, condicao: bool) -> None:
-        print(f"  [{'ok' if condicao else 'FALHOU'}] {rotulo}")
-        if not condicao:
-            falhas.append(rotulo)
-
-    titulo("AUTOTESTE")
-
-    gerenciador = carregar_colecao(silencioso=True)
-    colecao = gerenciador.sessions
-    print(f"  Coleção de trabalho: {len(colecao)} sessão(ões) do histórico")
-    print()
-
-    # --- estrutura -----------------------------------------------------
-    checar("a coleção de sessões é uma list", isinstance(colecao, list))
-    checar("as sessões são objetos ChargingSession",
-           all(isinstance(s, ChargingSession) for s in colecao))
-
-    # --- cadastro e validacao ------------------------------------------
-    antes = len(colecao)
-    inicio = datetime.datetime.now()
-    tempo_min = 42.5
-    nova = ChargingSession(
-        numero=algoritmos.proximo_numero(colecao),
-        charger_id="P2-C4", station_id="P2", vehicle_id="TST4E56",
-        user_name="Autoteste", user_type=UserType.SUBSCRIBER,
-        requested_power_kw=7.4, allocated_power_kw=7.4,
-        start_time=inicio,
-        end_time=inicio + datetime.timedelta(minutes=tempo_min),
-        energy_kwh=5.24, tariff_kwh=0.87, total_cost_brl=4.56,
-        status=SessionStatus.FINISHED,
-    )
-    gerenciador.registrar_historico(nova)
-    checar("registrar_historico acrescenta à lista (append)",
-           len(colecao) == antes + 1)
-    checar("tempo digitado vira end_time sem perda",
-           abs(nova.duration_minutes - tempo_min) < 0.01)
-    checar("registrar_historico não ocupa conector",
-           all(sid is None for sid in gerenciador._chargers.values()))
-
-    duplicada = False
-    try:
-        gerenciador.registrar_historico(nova)
-    except ValueError:
-        duplicada = True
-    checar("ID duplicado é recusado", duplicada)
-
-    # --- busca ---------------------------------------------------------
-    indice, comparacoes = algoritmos.busca_sequencial(colecao, nova.numero)
-    checar("busca sequencial encontra o que existe",
-           indice >= 0 and colecao[indice] is nova)
-    checar("busca sequencial conta comparações", comparacoes == indice + 1)
-    ausente, comp_ausente = algoritmos.busca_sequencial(colecao, -1)
-    checar("busca sequencial devolve -1 para ausente", ausente == -1)
-    checar("ausente custa uma comparação por elemento",
-           comp_ausente == len(colecao))
-
-    algoritmos.insertion_sort(colecao, algoritmos.CRITERIOS["1"][1])
-    indice_bin, comp_bin = algoritmos.busca_binaria(colecao, nova.numero)
-    checar("busca binária encontra o que existe",
-           indice_bin >= 0 and colecao[indice_bin] is nova)
-    checar("busca binária é mais barata que a sequencial",
-           len(colecao) < 4 or comp_bin < comparacoes)
-    checar("busca binária devolve -1 para ausente",
-           algoritmos.busca_binaria(colecao, -1)[0] == -1)
-
-    # --- ordenacao -----------------------------------------------------
-    n = len(colecao)
-    por_energia = algoritmos.CRITERIOS["2"][1]
-
-    amostra = list(colecao)
-    comp_bubble = algoritmos.bubble_sort(amostra, por_energia)
-    checar("bubble sort ordena de verdade",
-           all(por_energia(amostra[i]) <= por_energia(amostra[i + 1])
-               for i in range(len(amostra) - 1)))
-    checar(f"bubble sort faz exatamente n(n-1)/2 = {n * (n - 1) // 2}",
-           comp_bubble == n * (n - 1) // 2)
-
-    amostra = list(colecao)
-    algoritmos.insertion_sort(amostra, por_energia)
-    checar("insertion sort ordena de verdade",
-           all(por_energia(amostra[i]) <= por_energia(amostra[i + 1])
-               for i in range(len(amostra) - 1)))
-    comp_melhor = algoritmos.insertion_sort(amostra, por_energia)
-    checar(f"insertion sort em lista ordenada custa n-1 = {n - 1}",
-           comp_melhor == n - 1)
-
-    # --- estatisticas --------------------------------------------------
-    est = algoritmos.estatisticas(colecao)
-    checar("total de sessões bate com len()", est["total_sessoes"] == n)
-    soma = round(sum(s.energy_kwh for s in colecao), 3)
-    checar("energia total bate com a soma direta",
-           abs(est["energia_total_kwh"] - soma) < 0.01)
-    checar("ticket médio = faturamento / total",
-           abs(est["ticket_medio_brl"]
-               - round(est["faturamento_brl"] / n, 2)) < 0.011)
-    checar("maior consumo >= menor consumo",
-           est["maior_consumo_kwh"] >= est["menor_consumo_kwh"])
-    vazio = algoritmos.estatisticas([])
-    checar("coleção vazia devolve zeros sem estourar",
-           vazio["total_sessoes"] == 0 and vazio["menor_consumo_kwh"] == 0.0)
-
-    # --- integracao com o sistema real ---------------------------------
-    checar("SessionManager.get_session acha pela busca sequencial",
-           gerenciador.get_session(nova.session_id) is nova)
-    checar("get_session devolve None para inexistente",
-           gerenciador.get_session("CGI-NAOEXISTE") is None)
-    checar("numero_existe concorda com a busca",
-           algoritmos.numero_existe(colecao, nova.numero)
-           and not algoritmos.numero_existe(colecao, -1))
-    checar("proximo_numero é maior que todos os existentes",
-           algoritmos.proximo_numero(colecao)
-           > max((s.numero for s in colecao), default=0) - 1)
-
-    print()
-    if falhas:
-        print(f"  {len(falhas)} verificação(ões) FALHARAM:")
-        for item in falhas:
-            print(f"    - {item}")
-        return 1
-    print("  Todas as verificações passaram.")
-    return 0
-
-
 if __name__ == "__main__":
-    if "--autoteste" in sys.argv:
-        sys.exit(autoteste())
     sys.exit(main())

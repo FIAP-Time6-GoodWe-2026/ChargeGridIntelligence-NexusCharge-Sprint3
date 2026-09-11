@@ -771,7 +771,7 @@ def dashboard():
     # #B34 — acumula energia sob o lock para evitar corrida com finish_session.
     with _state_lock:
         for s in sm.list_active():
-            sm.accrue_energy(s.session_id)
+            sm.accrue_energy(s)
 
     ativas = sm.list_active()
     # #B46 — o painel do operador não pode oferecer conector reservado: o
@@ -1044,7 +1044,7 @@ def api_status():
     with _state_lock:
         ativas = sm.list_active()
         for s in ativas:
-            sm.accrue_energy(s.session_id)
+            sm.accrue_energy(s)
             mb.on_meter_read(s)
 
     sessoes_json = []
@@ -1104,7 +1104,7 @@ def relatorio_consolidado():
     # #B34 — acumula energia sob o lock para evitar corrida com finish_session.
     with _state_lock:
         for s in sm.list_active():
-            sm.accrue_energy(s.session_id)
+            sm.accrue_energy(s)
 
     todas  = sm.list_all()
 
@@ -1116,8 +1116,12 @@ def relatorio_consolidado():
     # fazia este relatório divergir para sempre do KPI do /admin.
     encerradas = [s for s in todas if not s.is_active]
     ativas_lst = [s for s in todas if s.is_active]
-    pagas      = [s for s in encerradas if _sessao_arquivada(s.session_id)]
-    pendentes  = [s for s in encerradas if s not in pagas]
+    # Uma consulta só para todas as encerradas, em vez de uma conexão SQLite
+    # por sessão. A separação depois é por session_id: comparar as próprias
+    # dataclasses faria o `in` percorrer os 17 campos de cada objeto.
+    arquivadas = _sessoes_arquivadas(s.session_id for s in encerradas)
+    pagas      = [s for s in encerradas if s.session_id in arquivadas]
+    pendentes  = [s for s in encerradas if s.session_id not in arquivadas]
     receita_realizada = round(sum(s.total_cost_brl for s in pagas), 2)
     receita_pendente  = round(sum(s.total_cost_brl for s in pendentes), 2)
     receita_projetada = round(sum(s.total_cost_brl for s in ativas_lst), 2)
@@ -1125,8 +1129,17 @@ def relatorio_consolidado():
     # 'decisoes' soma o histórico dos 3 PowerManagers (antes só contava P1).
     total_decisoes = sum(len(posto_pms[pid].history) for pid in ["P1", "P2", "P3"])
 
+    # O relatório mostra o estado quente (memória); o histórico pago vive no
+    # SQLite e é o que o painel do operador soma. Os dois números divergem por
+    # construção, então a tela diz de onde cada um vem em vez de deixar o
+    # operador supor que são a mesma coisa.
+    hist = db.query_one(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(custo_brl), 0) AS t FROM sessoes")
+
     totais = {
         "sessoes":            len(todas),
+        "historico_sessoes":  hist["n"] if hist else 0,
+        "historico_receita":  round(hist["t"], 2) if hist else 0.0,
         "ativas":             sm.active_count(),
         "energia":            round(sum(s.energy_kwh for s in todas), 3),
         # 'receita' mantida para compatibilidade com o template = total geral
@@ -1363,6 +1376,24 @@ def api_reserva_cancelar():
 def _sessao_arquivada(session_id: str):
     """Linha da tabela `sessoes` para esta sessão, ou None se ainda não paga."""
     return db.query_one("SELECT * FROM sessoes WHERE session_id = ?", (session_id,))
+
+
+def _sessoes_arquivadas(session_ids) -> set:
+    """
+    Quais dos IDs informados já estão arquivados (isto é, pagos).
+
+    Existe para o relatório não abrir uma conexão SQLite por sessão em tela.
+    Devolve um set para que a checagem de pertencimento seja O(1).
+    """
+    ids = list(session_ids)
+    if not ids:
+        return set()
+    marcadores = ",".join("?" * len(ids))
+    linhas = db.query_all(
+        f"SELECT session_id FROM sessoes WHERE session_id IN ({marcadores})",
+        ids,
+    )
+    return {linha["session_id"] for linha in linhas}
 
 
 def _sinal_da_reserva(usuario: str, charger_id: str) -> float:
@@ -1850,4 +1881,9 @@ if __name__ == "__main__":
     print("╚" + "═" * (largura - 1) + "╝")
     print()
 
-    app.run(debug=True, host="0.0.0.0", port=porta)
+    # O modo debug do Flask publica o console interativo do Werkzeug, que
+    # executa Python arbitrário — com host 0.0.0.0 isso fica aberto para a
+    # rede inteira. Fica desligado por padrão; quem quer o reloader durante o
+    # desenvolvimento liga com CHARGEGRID_DEBUG=1.
+    app.run(debug=os.environ.get("CHARGEGRID_DEBUG") == "1",
+            host="0.0.0.0", port=porta)

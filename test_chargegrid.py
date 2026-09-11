@@ -18,9 +18,7 @@ Cobertura:
 """
 
 import pathlib
-import sys
 import time
-import types
 
 import pytest
 
@@ -552,7 +550,7 @@ class TestRegressaoBugs:
     Testes de regressão para os três bugs corrigidos na sessão 2026-06-02:
 
         B1 — Carga máxima 31.7 kW em vez de 33.0 kW com 5 sessões
-             Causa: MARGEM_REDISTRIBUICAO aplicada no Caso 3 (_redistribute_to),
+             Causa: uma margem de folga aplicada no Caso 3,
              consumindo 5% da capacidade instalada de forma sistemática.
 
         B2 — Última sessão STANDARD recebe mais kW que as anteriores
@@ -583,7 +581,7 @@ class TestRegressaoBugs:
         carga = sm.total_allocated_power_kw()
         assert abs(carga - 33.0) < 0.5, (
             f"Carga esperada ≈ 33.0 kW, obtida {carga:.2f} kW "
-            f"(regressão B1: MARGEM_REDISTRIBUICAO no Caso 3)"
+            f"(regressão B1: margem de folga no Caso 3)"
         )
 
     def test_b2_nova_sessao_nao_recebe_mais_que_existentes_mesmo_tipo(
@@ -1640,7 +1638,7 @@ class TestRelatorioOrdenavel:
         """Busca e contagem sobre uma tabela que não existe seria ruído."""
         html = client.get("/relatorio").data.decode()
         assert 'id="busca-sessao"' not in html
-        assert "Nenhuma sessão registrada" in html
+        assert "Nenhuma sessão nesta execução" in html
 
 
 # ===========================================================================
@@ -1987,6 +1985,16 @@ class TestIntegracaoAlgoritmosNoSistema:
         assert len(sm.sessions) == 20
         assert all(sid is None for sid in sm.list_chargers().values())
 
+    def test_tempo_digitado_vira_end_time_sem_perda(self):
+        """
+        O cadastro manual do menu recebe a duração em minutos e a converte em
+        `end_time`, porque a duração é derivada dos carimbos de tempo. A volta
+        tem que bater.
+        """
+        for minutos in (0.5, 42.5, 95.0, 1439.0):
+            sessao = _sessao(1, energia=10.0, custo=12.0, minutos=minutos)
+            assert abs(sessao.duration_minutes - minutos) < 0.01, minutos
+
     def test_registrar_historico_recusa_id_duplicado(self, sm):
         sm.registrar_historico(_sessao(7, 10.0, 12.0, 60.0))
         with pytest.raises(ValueError, match="7"):
@@ -2112,18 +2120,10 @@ class TestCarregamentoDoHistorico:
         assert db.carregar_sessoes() == []
 
 
-class TestMenuAutoteste:
-    """O `--autoteste` do menu é entregável: precisa continuar passando."""
+class TestMenuTerminal:
+    """O menu de terminal: estrutura, validações e as redes de segurança."""
 
-    def test_autoteste_passa(self, capsys):
-        import menu
-
-        assert menu.autoteste() == 0
-        saida = capsys.readouterr().out
-        assert "FALHOU" not in saida
-        assert "Todas as verificações passaram" in saida
-
-    def test_menu_tem_as_funcoes_que_o_enunciado_pede(self):
+    def test_menu_tem_as_funcoes_esperadas(self):
         import menu
 
         for nome in ("cadastrar_sessao", "listar_sessoes", "buscar_sessao",
@@ -2202,3 +2202,115 @@ class TestMenuAutoteste:
         saida = capsys.readouterr().out
         assert "Falha inesperada" in saida
         assert "menu continua ativo" in saida
+
+
+class TestSeparacaoMemoriaHistorico:
+    """
+    O relatório mostra o estado quente; o painel soma o histórico arquivado.
+    Os dois números divergem por construção — as telas precisam dizer isso,
+    senão o operador lê um como total do outro.
+    """
+
+    def _arquivar(self, n: int) -> None:
+        import db
+
+        for i in range(n):
+            db.execute(
+                "INSERT INTO sessoes (session_id, usuario, charger_id,"
+                " station_id, vehicle_id, user_name, user_type, inicio, fim,"
+                " hora_inicio, duracao_min, potencia_kw, energia_kwh,"
+                " tarifa_kwh, custo_brl, metodo_pagto)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (f"CGI-HIST{i:03d}", "luiz", "P1-C1", "P1", "ABC1D23", "Teste",
+                 "P", "2026-09-01 12:00:00", "2026-09-01 13:00:00", 12, 60.0,
+                 10.0, 10.0, 1.2, 12.0, "PIX"),
+            )
+
+    def test_relatorio_mostra_o_total_arquivado(self, client):
+        self._arquivar(7)
+        html = client.get("/relatorio").data.decode()
+        assert "7 sessões" in html and "arquivadas" in html
+        assert "Sessões nesta execução" in html
+
+    def test_relatorio_nao_confunde_execucao_com_historico(self, client):
+        """Com histórico no banco e memória vazia, o card tem que dizer 0."""
+        self._arquivar(3)
+        html = client.get("/relatorio").data.decode()
+        assert "Nenhuma sessão nesta execução" in html
+
+    def test_admin_rotula_o_kpi_como_historico(self, client):
+        self._arquivar(4)
+        html = client.get("/admin").data.decode()
+        assert "4 sessões pagas no histórico" in html
+
+    def test_uma_consulta_para_todas_as_encerradas(self, monkeypatch):
+        """
+        A separação paga/pendente não pode voltar a abrir uma conexão SQLite
+        por sessão em tela — era uma consulta por linha do relatório.
+        """
+        import app as app_mod
+
+        chamadas = []
+        original = app_mod.db.query_all
+
+        def espiao(sql, params=()):
+            chamadas.append(sql)
+            return original(sql, params)
+
+        monkeypatch.setattr(app_mod.db, "query_all", espiao)
+        ids = [f"CGI-X{i}" for i in range(20)]
+        assert app_mod._sessoes_arquivadas(ids) == set()
+        assert len(chamadas) == 1, "uma consulta só, com IN (...)"
+
+    def test_lista_vazia_nao_consulta_o_banco(self, monkeypatch):
+        import app as app_mod
+
+        def explode(*a, **k):
+            raise AssertionError("não deveria consultar com lista vazia")
+
+        monkeypatch.setattr(app_mod.db, "query_all", explode)
+        assert app_mod._sessoes_arquivadas([]) == set()
+
+    def test_accrue_energy_aceita_a_sessao_ou_o_id(self, sm, pm, pe):
+        """
+        O laço de polling já tem o objeto em mãos; passar o ID obrigava uma
+        busca sequencial redundante a cada chamada.
+        """
+        from models import UserType
+
+        s, _ = _start(sm, pm, pe, "P1-C1", UserType.STANDARD)
+        assert sm.accrue_energy(s) is s
+        assert sm.accrue_energy(s.session_id) is s
+
+    def test_debug_do_flask_nao_fica_ligado_por_padrao(self):
+        """
+        debug=True publica o console do Werkzeug, que executa Python arbitrário
+        — com host 0.0.0.0 isso fica aberto para a rede inteira.
+        """
+        fonte = pathlib.Path(__file__).with_name("app.py").read_text(
+            encoding="utf-8")
+        assert "debug=True" not in fonte
+        assert 'CHARGEGRID_DEBUG' in fonte
+
+
+class TestTarifaFonteUnica:
+    """
+    Tarifa base, desconto de assinante, multiplicador de pico e taxa mínima
+    eram declarados em `logica_recarga` e de novo em `pricing_engine`. Dois
+    lugares definindo o preço do kWh é divergência esperando para acontecer.
+    """
+
+    def test_pricing_engine_reexporta_as_constantes_do_sprint1(self):
+        import logica_recarga
+        import pricing_engine
+
+        for nome in ("TARIFA_BASE_KWH", "DESCONTO_ASSINANTE",
+                     "MULTIPLICADOR_PICO", "TAXA_MINIMA_SESSAO"):
+            assert getattr(pricing_engine, nome) is getattr(logica_recarga, nome), nome
+
+    def test_pricing_engine_nao_redeclara_a_tarifa(self):
+        fonte = pathlib.Path(__file__).with_name("pricing_engine.py").read_text(
+            encoding="utf-8")
+        for nome in ("TARIFA_BASE_KWH", "DESCONTO_ASSINANTE",
+                     "MULTIPLICADOR_PICO", "TAXA_MINIMA_SESSAO"):
+            assert f"{nome}:" not in fonte, f"{nome} voltou a ser declarado aqui"

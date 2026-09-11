@@ -41,6 +41,8 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from logica_recarga import (DESCONTO_ASSINANTE, MULTIPLICADOR_PICO,
+                            TARIFA_BASE_KWH, TAXA_MINIMA_SESSAO)
 from models import UserType
 
 # ---------------------------------------------------------------------------
@@ -50,14 +52,16 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Constantes de tarifação (compatíveis com Sprint 1)
+# Constantes de tarifação
 # ---------------------------------------------------------------------------
+#
+# Tarifa base, desconto de assinante, multiplicador de pico e taxa mínima vêm
+# de `logica_recarga` (Sprint 1) em vez de serem redeclaradas aqui. Os valores
+# eram idênticos nos dois arquivos, e dois lugares definindo o preço do kWh é
+# uma divergência esperando para acontecer num sistema que fatura. Quem importa
+# estas constantes de `pricing_engine` continua funcionando.
 
-TARIFA_BASE_KWH:    float = 1.20   # R$/kWh — tarifa padrão
-DESCONTO_ASSINANTE: float = 0.15   # 15% — UserType.SUBSCRIBER
-DESCONTO_CORPORATE: float = 0.10   # 10% — UserType.CORPORATE
-MULTIPLICADOR_PICO: float = 1.50   # +50% entre 18h e 22h59
-TAXA_MINIMA_SESSAO: float = 2.00   # R$ — cobrança mínima por sessão
+DESCONTO_CORPORATE: float = 0.10   # 10% — UserType.CORPORATE, só existe aqui
 
 # Eixo 2 — demanda
 LIMIAR_DEMANDA:        float = 0.70   # ocupação acima da qual a tarifa sobe
@@ -288,42 +292,3 @@ class PricingEngine:
     # ------------------------------------------------------------------
     # Tabela de tarifas (para impressão no menu)
     # ------------------------------------------------------------------
-
-    def print_tariff_table(self) -> str:
-        """
-        Gera uma tabela legível com todas as combinações de tarifa possíveis.
-        Útil para o menu interativo e para o documento técnico.
-        """
-        ocupacao_atual = self._sm.occupancy_ratio()
-        linhas = [
-            "╔══════════════════════════════════════════════════════════╗",
-            "║           TABELA DE TARIFAS — ChargeGrid Intelligence    ║",
-            f"║  Tarifa base: R$ {self._tarifa_base:.2f}/kWh  |  "
-            f"Ocupação atual: {ocupacao_atual:.0%}          ║",
-            "╠══════════════╦══════════════╦══════════════╦═════════════╣",
-            "║ Tipo usuário ║ Fora de pico ║  Horário pico║ Pico+Demanda║",
-            "╠══════════════╬══════════════╬══════════════╬═════════════╣",
-        ]
-        for ut in UserType:
-            # Simula ocupação baixa para coluna "fora de pico"
-            class _FakeSM:
-                def occupancy_ratio(self): return 0.0
-            pe_low = PricingEngine(_FakeSM(), self._tarifa_base, self._limiar_demanda)
-            t_normal = pe_low.calculate(ut, hora=10)
-
-            t_pico   = pe_low.calculate(ut, hora=19)
-
-            class _HighSM:
-                def occupancy_ratio(self): return 0.80
-            pe_high = PricingEngine(_HighSM(), self._tarifa_base, self._limiar_demanda)
-            t_pd = pe_high.calculate(ut, hora=19)
-
-            linhas.append(
-                f"║ {ut.name:<12} ║ R$ {t_normal.tariff_kwh:.4f}   ║"
-                f" R$ {t_pico.tariff_kwh:.4f}   ║ R$ {t_pd.tariff_kwh:.4f}  ║"
-            )
-
-        linhas.append(
-            "╚══════════════╩══════════════╩══════════════╩═════════════╝"
-        )
-        return "\n".join(linhas)

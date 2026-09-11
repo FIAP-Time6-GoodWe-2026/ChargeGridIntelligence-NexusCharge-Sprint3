@@ -8,17 +8,12 @@ Algoritmos implementados manualmente sobre a coleção de sessões de recarga.
 
 Por que este módulo existe separado
 -----------------------------------
-Estes são os algoritmos avaliados na disciplina de Estruturas de Dados e
-Algoritmos. Eles moram num módulo próprio por três razões:
-
-1. **Responsabilidade única.** `session_manager` cuida do ciclo de vida de uma
-   sessão; `power_manager` distribui potência; aqui só há algoritmo puro sobre
-   uma coleção. Nenhuma regra de negócio, nenhum acesso a banco, nenhuma rota.
-2. **Legibilidade isolada.** O algoritmo pode ser lido e conferido sem abrir o
-   resto do sistema.
-3. **Garantia automatizada.** O teste `test_algoritmos_nao_usam_sort_nem_sorted`
-   varre *este arquivo* procurando recursos nativos de busca e ordenação. O
-   resto do sistema tem permissão de usá-los; aqui não.
+`session_manager` cuida do ciclo de vida de uma sessão; `power_manager`
+distribui potência; aqui só há algoritmo puro sobre uma coleção — nenhuma
+regra de negócio, nenhum acesso a banco, nenhuma rota. Isolado assim, o
+algoritmo pode ser lido sem abrir o resto do sistema, e um teste consegue
+varrer *este arquivo* para garantir que ninguém troque as implementações
+manuais pela ordenação nativa mais tarde.
 
 Dependências: apenas a biblioteca padrão e `models`. Este módulo não conhece
 Flask, não conhece SQLite e não importa `session_manager` — é por isso que o
@@ -36,10 +31,9 @@ Onde o sistema usa cada algoritmo
 
 Contagem de comparações
 -----------------------
-Todos os quatro algoritmos devolvem quantas comparações realizaram. Não é
-enfeite: é a evidência empírica que sustenta a análise de complexidade do
-relatório e alimenta a opção 6 do menu ("Comparar algoritmos"). Os números
-fecham com as fórmulas fechadas — ver a docstring de cada função.
+Todos os quatro algoritmos devolvem quantas comparações realizaram. É o que
+alimenta a opção 6 do menu ("Comparar algoritmos") e o que permite conferir,
+na prática, que o custo bate com a fórmula fechada de cada um.
 """
 
 from __future__ import annotations
@@ -124,7 +118,7 @@ def busca_binaria(colecao: List[ChargingSession],
     de procura (`fim - inicio`) é dividido por 2 em cada iteração. Para chegar
     de n a 1 dividindo por 2 são necessários log₂(n) passos — com 180 sessões,
     no máximo 8 comparações contra as 180 da busca sequencial. É o contraste
-    que o item 10 do enunciado pede.
+    prático entre uma busca linear e uma logarítmica.
     """
     comparacoes = 0
     inicio = 0
@@ -231,7 +225,7 @@ def insertion_sort(colecao: List[ChargingSession], chave: Chave) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Critérios de ordenação oferecidos ao usuário (item 5 do enunciado)
+# Critérios de ordenação oferecidos ao usuário
 # ---------------------------------------------------------------------------
 
 CRITERIOS: Dict[str, Tuple[str, Chave]] = {
@@ -243,14 +237,14 @@ CRITERIOS: Dict[str, Tuple[str, Chave]] = {
 
 
 # ---------------------------------------------------------------------------
-# Estatísticas (item 6 do enunciado)
+# Estatísticas
 # ---------------------------------------------------------------------------
 
 def estatisticas(colecao: List[ChargingSession]) -> Dict[str, float]:
     """
     Calcula os indicadores agregados da coleção em UMA única passada.
 
-    Os seis valores exigidos pelo enunciado, mais dois de apoio:
+    Os seis indicadores principais, mais quatro de apoio:
         total_sessoes         : quantas sessões estão armazenadas
         energia_total_kwh     : energia entregue somada
         faturamento_brl       : receita somada
@@ -268,8 +262,8 @@ def estatisticas(colecao: List[ChargingSession]) -> Dict[str, float]:
 
     Coleção vazia devolve zeros em todos os campos. Isso é proposital: as
     funções nativas de mínimo e máximo levantam `ValueError` em sequência
-    vazia, e o item 8 do enunciado exige que o programa não encerre
-    inesperadamente — abrir o menu com o banco vazio é normal.
+    vazia, e abrir o menu com o banco vazio é uma situação normal, não um
+    erro que deva derrubar o programa.
     """
     total = len(colecao)
     if total == 0:
@@ -321,16 +315,16 @@ def estatisticas(colecao: List[ChargingSession]) -> Dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Apoio ao cadastro (item 8 do enunciado — validação de ID duplicado)
+# Apoio ao cadastro (validação de ID duplicado)
 # ---------------------------------------------------------------------------
 
 def numero_existe(colecao: List[ChargingSession], numero: int) -> bool:
     """
     Informa se já existe sessão com o ID informado.
 
-    Reaproveita `busca_sequencial` de propósito: a validação de ID duplicado
-    exigida pelo item 8 é, literalmente, uma busca. Escrever um segundo laço
-    aqui duplicaria o algoritmo avaliado.
+    Reaproveita `busca_sequencial` de propósito: procurar um ID duplicado é,
+    literalmente, uma busca. Escrever um segundo laço aqui duplicaria o
+    algoritmo.
 
     Complexidade: O(n), herdada da busca sequencial.
     """

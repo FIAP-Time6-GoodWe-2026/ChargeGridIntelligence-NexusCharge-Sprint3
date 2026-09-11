@@ -8,5 +8,8 @@ chargegrid_sessoes.csv
 .venv/
 .impeccable/
 
+# Documento da disciplina: mora ao lado do repositorio, nao dentro dele.
+RELATORIO_SPRINT3_DSA.*
+
 # Pacote de entrega, gerado a partir do que ja esta versionado aqui
 *.zip

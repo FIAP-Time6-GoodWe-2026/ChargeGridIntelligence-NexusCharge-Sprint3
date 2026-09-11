@@ -258,13 +258,18 @@
     </a>
 
     <h2 class="page-title">Relatório de Sessões</h2>
-    <p class="page-sub">Todas as sessões registradas nesta operação · GoodWe GW11K-HCA-20</p>
+    <p class="page-sub">
+        Sessões desta execução do servidor · GoodWe GW11K-HCA-20.
+        As recargas já pagas saem da memória e vão para o histórico:
+        <a href="{{ url_for('admin_home') }}">{{ totais.historico_sessoes }} sessões
+        arquivadas, R$ {{ totais.historico_receita | brl }}</a>.
+    </p>
 
     <!-- ── TOTALIZADORES ── -->
     <div class="totals-grid">
         <div class="total-card">
             <div class="total-val">{{ totais.sessoes }}</div>
-            <div class="total-lbl">Sessões</div>
+            <div class="total-lbl">Sessões nesta execução</div>
         </div>
         <div class="total-card">
             <div class="total-val {% if totais.ativas > 0 %}accent{% endif %}">{{ totais.ativas }}</div>
@@ -276,7 +281,7 @@
         </div>
         <div class="total-card">
             <div class="total-val accent">R$ {{ "%.2f"|format(totais.receita) }}</div>
-            <div class="total-lbl">Receita total</div>
+            <div class="total-lbl">Receita desta execução</div>
             <div class="total-lbl" style="margin-top:4px;font-size:0.7rem;opacity:0.8;">
                 Paga R$ {{ "%.2f"|format(totais.receita_realizada) }}
                 {% if totais.receita_pendente %}
@@ -360,7 +365,7 @@
         </div>
         {% else %}
         <div style="padding:32px;text-align:center;color:var(--cor-texto-secundario);">
-            Nenhuma sessão registrada.
+            Nenhuma sessão nesta execução do servidor.
         </div>
         {% endif %}
     </div>

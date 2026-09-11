@@ -18,7 +18,7 @@ Arquitetura:
     que a lógica fique separada sem acoplamento direto entre os módulos.
 
 Persistência (Sprint 3):
-    Sessões ATIVAS continuam no dict em memória — é o estado quente, lido e
+    Sessões ATIVAS continuam na lista em memória — é o estado quente, lido e
     escrito a cada polling de 5 segundos. Sessões ENCERRADAS e pagas são
     arquivadas em SQLite pela camada web (ver db.py), alimentando relatório,
     exportação em CSV e as análises estatísticas.
@@ -200,10 +200,9 @@ class SessionManager:
             A própria sessão, agora na coleção.
 
         Raises:
-            ValueError : se `numero` já existir na coleção (item 8 do
-                         enunciado — não permitir ID duplicado). A checagem
-                         usa `algoritmos.numero_existe`, ou seja, a busca
-                         sequencial avaliada na Sprint.
+            ValueError : se `numero` já existir na coleção. A checagem usa
+                         `algoritmos.numero_existe`, ou seja, a mesma busca
+                         sequencial.
         """
         if algoritmos.numero_existe(self._sessions, sessao.numero):
             raise ValueError(f"Já existe sessão com ID {sessao.numero}.")
@@ -240,7 +239,8 @@ class SessionManager:
         )
         return session
 
-    def accrue_energy(self, session_id: str) -> Optional[ChargingSession]:
+    def accrue_energy(self, sessao: "ChargingSession | str"
+                      ) -> Optional[ChargingSession]:
         """
         Acumula energia com base no TEMPO REAL decorrido desde a última
         contabilização, à potência atualmente alocada.
@@ -253,13 +253,18 @@ class SessionManager:
 
         Energia (kWh) = potência (kW) × Δt (horas)
 
+        Aceita a própria sessão ou o ID dela. Quem já tem o objeto em mãos
+        — o laço de polling da camada web, os métodos deste módulo — passa o
+        objeto e evita uma busca sequencial redundante a cada chamada.
+
         Args:
-            session_id : ID da sessão
+            sessao : a sessão, ou o ID dela
 
         Returns:
             Sessão atualizada (inalterada se inativa ou sem relógio iniciado)
         """
-        session = self.get_session(session_id)
+        session = (sessao if isinstance(sessao, ChargingSession)
+                   else self.get_session(sessao))
         if session is None or not session.is_active:
             return session  # silencioso: nada a acumular
 
@@ -315,7 +320,7 @@ class SessionManager:
         session = self._get_or_raise(session_id)
         # Contabiliza a energia consumida à potência ATUAL antes de alterá-la,
         # para que o intervalo até agora não seja cobrado à nova potência.
-        self.accrue_energy(session_id)
+        self.accrue_energy(session)
         old_power = session.allocated_power_kw
         session.allocated_power_kw = round(new_power_kw, 2)
         session.status = SessionStatus.THROTTLED
@@ -339,7 +344,7 @@ class SessionManager:
         """
         session = self._get_or_raise(session_id)
         # Contabiliza energia à potência reduzida antes de mudar a alocação.
-        self.accrue_energy(session_id)
+        self.accrue_energy(session)
         session.allocated_power_kw = round(power_kw, 2)
         # Transita para CHARGING apenas se a potência foi totalmente restaurada.
         if session.allocated_power_kw >= session.requested_power_kw - 0.1:
@@ -395,7 +400,7 @@ class SessionManager:
             return session
 
         # Contabiliza energia até o momento do encerramento (tempo real)
-        self.accrue_energy(session_id)
+        self.accrue_energy(session)
 
         session.end_time = datetime.datetime.now()
         session.status = status
@@ -439,9 +444,9 @@ class SessionManager:
         """
         Retorna a sessão ou None se não encontrada.
 
-        Usa **busca sequencial** (`algoritmos.busca_sequencial`) sobre a lista,
-        com `session_id` como chave. É o mesmo algoritmo avaliado na Sprint,
-        exercitado em produção: toda consulta da camada web passa por aqui.
+        Usa **busca sequencial** (`algoritmos.busca_sequencial`) sobre a
+        lista, com `session_id` como chave. Toda consulta de sessão da camada
+        web passa por aqui.
 
         Complexidade: O(n). O n relevante é pequeno por construção física —
         são 15 conectores, logo no máximo 15 sessões ativas simultâneas; as
@@ -460,9 +465,9 @@ class SessionManager:
 
         Diferente de `list_all()`, que devolve uma cópia: aqui o chamador
         recebe a própria lista. É o que permite ao menu de terminal ordenar a
-        coleção **in-place** com os algoritmos da Sprint e ver o efeito
-        persistir entre as opções — ordenar por energia na opção 4 e depois
-        listar na opção 2 mostra a nova ordem, como o enunciado espera.
+        coleção **in-place** e ver o efeito persistir entre as opções —
+        ordenar por energia na opção 4 e depois listar na opção 2 mostra a
+        nova ordem.
 
         Quem só quer ler sem risco de alterar a ordem usa `list_all()`.
         """

@@ -62,7 +62,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 181 testes
+pytest -q          # 189 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -159,7 +159,7 @@ app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
 templates/              14 telas + partial de cabeçalho
 static/                 favicon
-test_chargegrid.py      181 testes automatizados
+test_chargegrid.py      189 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -281,7 +281,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**181 testes** em 22 classes. A suíte roda contra um banco temporário por teste,
+**189 testes** em 24 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -302,6 +302,8 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | **Integração dos algoritmos** | Testes-espião: falham se `get_session` deixar de usar a busca sequencial ou o `rebalance` deixar de usar o insertion sort |
 | **Carregamento do histórico** | Reconstrução das sessões do SQLite, banco ausente e arquivo corrompido |
 | **Menu de terminal** | As 7 opções, validações de entrada, `EOFError` e falha dentro de uma opção |
+| **Memória × histórico** | Os rótulos que separam sessões desta execução do histórico arquivado, e a consulta única que substituiu uma por sessão |
+| **Tarifa com fonte única** | `pricing_engine` reexporta as constantes de `logica_recarga` em vez de redeclará-las |
 
 ---
 
@@ -325,8 +327,7 @@ assim.
 O menu de terminal abre sobre o histórico real do banco:
 
 ```bash
-python menu.py              # menu interativo, 7 opções
-python menu.py --autoteste  # 26 asserções, sem precisar do pytest
+python menu.py   # menu interativo, 7 opções
 ```
 
 ```
@@ -358,7 +359,9 @@ insertion em lista já ordenada é exatamente n−1 — o melhor caso linear que
 justifica o insertion no `rebalance`.
 
 A análise completa, com o trecho de código que provoca o crescimento de cada
-algoritmo, está em **`RELATORIO_SPRINT3_DSA.md`** (e no PDF ao lado).
+algoritmo, está no **`RELATORIO_SPRINT3_DSA.pdf`**, que acompanha o pacote
+de entrega — fora deste repositório, porque é documento de disciplina e não
+parte do aplicativo.
 
 ---
 

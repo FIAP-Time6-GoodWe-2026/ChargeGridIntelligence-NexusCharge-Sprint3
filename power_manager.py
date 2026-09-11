@@ -73,10 +73,6 @@ POTENCIA_MINIMA_KW:   float = 4.2    # mínima trifásica (registrador 10029, li
 # Com 5 conectores de 11 kW, o 4º conector (44 kW projetado > 33 kW) já aciona
 # a redistribuição automática — sem margem de folga, como especificado.
 LIMIAR_THROTTLE:      float = 1.00
-# MARGEM_REDISTRIBUICAO — OBSOLETA (#B29). Pertencia ao antigo "Caso 2
-# preventivo", removido por ser código inalcançável com LIMIAR_THROTTLE = 1.00.
-# Mantida apenas para compatibilidade de import; não é mais usada na lógica.
-MARGEM_REDISTRIBUICAO: float = 0.95
 
 # Pesos de prioridade por tipo de usuário na redistribuição de potência.
 # Assinante recebe 20% a mais que a base equânime; Corporativo recebe 10% a mais.
@@ -347,10 +343,9 @@ class PowerManager:
         Ordenação da fila de restauração:
             As sessões em THROTTLED são ordenadas por potência alocada
             crescente com `algoritmos.insertion_sort` — implementação manual,
-            sem recurso nativo de ordenação. Este é o ponto do sistema em que
-            o algoritmo avaliado na Sprint 3 roda em produção: toda vez que um
-            conector é liberado, ele executa. O número de comparações vai para
-            a mensagem do AllocationResult e aparece na tela /relatorio.
+            sem recurso nativo de ordenação. Roda toda vez que um conector é
+            liberado. O número de comparações vai para a mensagem do
+            AllocationResult e aparece na tela do painel.
 
         Returns:
             AllocationResult com os eventos de restauração, ou None se
@@ -383,7 +378,7 @@ class PowerManager:
 
         # Ordena throttled: mais reduzidas primeiro (maior ganho por
         # restauração). A ordenação é feita por `algoritmos.insertion_sort`,
-        # implementado à mão na Sprint 3 — não pela ordenação nativa da lista.
+        # implementado à mão — não pela ordenação nativa da lista.
         #
         # Por que insertion sort aqui: a coleção é minúscula e quase sempre
         # já quase ordenada. São no máximo MAX_CHARGERS_PER_STATION = 5
@@ -449,32 +444,6 @@ class PowerManager:
     # ------------------------------------------------------------------
     # Status da instalação
     # ------------------------------------------------------------------
-
-    def status_report(self) -> str:
-        """Retorna um painel de status formatado para o menu interativo."""
-        ativas = self._sm.list_active()
-        linhas = [
-            "┌─────────────────────────────────────────────────┐",
-            "│  PAINEL DE POTÊNCIA                             │",
-            f"│  Limite instalação : {self._limit:>6.1f} kW               │",
-            f"│  Em uso            : {self._sm.total_allocated_power_kw():>6.1f} kW  "
-            f"({self.occupancy_pct:>5.1f}%)      │",
-            f"│  Disponível        : {self.available_kw:>6.1f} kW               │",
-            f"│  Sessões ativas    : {self._sm.active_count():>3d}                      │",
-            "├─────────────────────────────────────────────────┤",
-        ]
-        if ativas:
-            for s in ativas:
-                flag = "⚡" if s.status == SessionStatus.CHARGING else "🔻"
-                linhas.append(
-                    f"│  {flag} {s.charger_id:<6} {s.user_name:<15} "
-                    f"{s.allocated_power_kw:>5.1f} kW  {s.status.value:<10}│"
-                )
-        else:
-            linhas.append("│  Nenhuma sessão ativa.                          │")
-        linhas.append("└─────────────────────────────────────────────────┘")
-        return "\n".join(linhas)
-
     # ------------------------------------------------------------------
     # Helpers privados
     # ------------------------------------------------------------------
@@ -555,33 +524,3 @@ class PowerManager:
                 pendentes.remove(s)
 
         return alvos
-
-    def _redistribute_to(
-        self, sessions: List[ChargingSession], target_kw: float
-    ) -> List[tuple]:
-        """
-        Aplica throttle às sessões existentes repartindo ``target_kw`` por
-        prioridade de tipo de usuário (via _target_por_peso). Assinante (+20%)
-        e Corporativo (+10%) recebem fatias maiores; o tipo Padrão absorve a
-        diferença.
-
-        Args:
-            sessions  : sessões ativas a throttlar
-            target_kw : potência total disponível para as sessões existentes
-                        (a fatia da nova sessão já foi reservada pelo allocate)
-
-        Returns:
-            Lista de eventos (session_id, antiga_kw, nova_kw) para o log Modbus.
-        """
-        if not sessions:
-            return []
-
-        alvos = self._target_por_peso(sessions, target_kw)
-        events = []
-        for s in sessions:
-            nova = alvos[s.session_id]
-            if abs(nova - s.allocated_power_kw) > 0.1:
-                old = s.allocated_power_kw
-                self._sm.throttle_session(s.session_id, nova)
-                events.append((s.session_id, old, nova))
-        return events

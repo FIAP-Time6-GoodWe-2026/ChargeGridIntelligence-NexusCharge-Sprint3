@@ -180,21 +180,6 @@ class ChargingSession:
     # ---------------------------------------------------------------------------
     # Representação
     # ---------------------------------------------------------------------------
-
-    def status_line(self) -> str:
-        """Linha resumida para exibição no menu interativo."""
-        potencia = f"{self.allocated_power_kw:.1f} kW"
-        energia  = f"{self.energy_kwh:.2f} kWh"
-        custo    = f"R$ {self.total_cost_brl:.2f}"
-        duracao  = f"{int(self.duration_minutes)} min"
-        return (
-            f"#{self.numero:<4} [{self.session_id}] {self.charger_id} | "
-            f"{self.user_name} ({self.user_type.value}) | "
-            f"Status: {self.status.value:<10} | "
-            f"Potência: {potencia} | Energia: {energia} | "
-            f"Custo: {custo} | Duração: {duracao}"
-        )
-
     def to_report_dict(self) -> dict:
         """
         Serializa a sessão para o gerador de relatórios.

@@ -219,13 +219,11 @@ def carregar_sessoes() -> List[ChargingSession]:
     Reconstrói as sessões pagas do histórico como objetos `ChargingSession`.
 
     Ordena por data de início e numera sequencialmente a partir de 1: esse
-    `numero` é o ID que o enunciado da Sprint usa, o que o menu aceita
-    digitado e a chave da busca binária. Ordenar por `inicio` no SQL é
-    deliberado e não conflita com o conteúdo avaliado — quem ordena aqui é o
-    banco de dados, com a cláusula ORDER BY, e o que está sendo estabelecido é
-    a numeração dos registros, não o algoritmo de ordenação da Sprint. As
-    ordenações que o usuário pede no menu passam por `algoritmos.bubble_sort`
-    e `algoritmos.insertion_sort`.
+    O `numero` é o ID curto que o menu aceita digitado e a chave da busca
+    binária. Quem ordena aqui é o próprio SQLite, com ORDER BY: o que está
+    sendo estabelecido é a numeração dos registros na entrada. As ordenações
+    que o usuário pede no menu passam por `algoritmos.bubble_sort` e
+    `algoritmos.insertion_sort`.
 
     **NUNCA escreve no banco.** O menu é ferramenta de leitura e análise; a
     sessão cadastrada à mão nele vive só na memória daquela execução.
@@ -233,9 +231,8 @@ def carregar_sessoes() -> List[ChargingSession]:
     Returns:
         Lista de sessões, possivelmente vazia. Banco ausente, tabela ainda não
         criada ou arquivo corrompido devolvem **lista vazia** em vez de
-        exceção: o item 8 do enunciado exige que o programa não encerre
-        inesperadamente, e faturamento não pode derrubar o processo por causa
-        de leitura. O menu abre vazio e o cadastro manual preenche.
+        exceção: faturamento não pode derrubar o processo por causa de uma
+        leitura. O menu abre vazio e o cadastro manual preenche.
     """
     try:
         linhas = query_all(
