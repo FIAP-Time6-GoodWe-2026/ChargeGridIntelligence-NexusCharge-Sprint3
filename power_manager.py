@@ -33,6 +33,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Protocol, runtime_checkable
 
+import algoritmos
 from models import ChargingSession, SessionStatus
 
 
@@ -343,6 +344,14 @@ class PowerManager:
         fatia atinge o solicitado voltam a CHARGING; as demais permanecem
         THROTTLED com potência maior (transição feita por restore_session, #B3).
 
+        Ordenação da fila de restauração:
+            As sessões em THROTTLED são ordenadas por potência alocada
+            crescente com `algoritmos.insertion_sort` — implementação manual,
+            sem recurso nativo de ordenação. Este é o ponto do sistema em que
+            o algoritmo avaliado na Sprint 3 roda em produção: toda vez que um
+            conector é liberado, ele executa. O número de comparações vai para
+            a mensagem do AllocationResult e aparece na tela /relatorio.
+
         Returns:
             AllocationResult com os eventos de restauração, ou None se
             não houve nada a restaurar ou margem insuficiente.
@@ -372,8 +381,21 @@ class PowerManager:
         # do allocate). Restauramos apenas as throttled; não-throttled mantêm-se.
         alvos = self._target_por_peso(sessoes_ativas, self._limit)
 
-        # Ordena throttled: mais reduzidas primeiro (maior ganho por restauração)
-        throttled.sort(key=lambda s: s.allocated_power_kw)
+        # Ordena throttled: mais reduzidas primeiro (maior ganho por
+        # restauração). A ordenação é feita por `algoritmos.insertion_sort`,
+        # implementado à mão na Sprint 3 — não pela ordenação nativa da lista.
+        #
+        # Por que insertion sort aqui: a coleção é minúscula e quase sempre
+        # já quase ordenada. São no máximo MAX_CHARGERS_PER_STATION = 5
+        # sessões por posto, logo no máximo 5·4/2 = 10 comparações no pior
+        # caso e apenas 4 no melhor (lista já ordenada), porque o laço interno
+        # para na primeira comparação. Um algoritmo O(n log n) não teria onde
+        # ganhar com n ≤ 5, e a estabilidade do insertion garante que sessões
+        # com a mesma potência sejam restauradas na ordem de chegada — a
+        # decisão fica reproduzível.
+        comparacoes = algoritmos.insertion_sort(
+            throttled, lambda s: s.allocated_power_kw
+        )
 
         events: List[tuple] = []
 
@@ -415,7 +437,9 @@ class PowerManager:
             message=(
                 f"✅ Rebalanceamento: {len(events)} sessão(ões) restauradas "
                 f"(carga: {carga_apos:.1f}/{self._limit:.1f} kW "
-                f"— {round(carga_apos/self._limit*100,1):.1f}%)"
+                f"— {round(carga_apos/self._limit*100,1):.1f}%) "
+                f"[insertion sort: {len(throttled)} em fila, "
+                f"comparações: {comparacoes}]"
             ),
         )
         self._history.append(result)

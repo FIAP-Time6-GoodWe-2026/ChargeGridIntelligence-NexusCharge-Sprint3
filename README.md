@@ -30,6 +30,7 @@ ele paga**.
 | **Menu de perfil** | Avatar no cabeçalho com nome, saldo, atalho de recarga e — para o operador — acesso ao painel. |
 | **Painel do operador** | Hub em `/admin` reunindo dashboard, relatório, log Modbus e testes, com indicadores ao vivo e exportação em CSV. |
 | **Persistência** | SQLite (`sqlite3` da biblioteca padrão) guarda carteiras, extrato, reservas e histórico de sessões. |
+| **Estruturas de Dados** | Busca e ordenação implementadas à mão em `algoritmos.py`, **rodando em produção** (`get_session` e `rebalance`), com um segundo ponto de entrada em `menu.py` — menu de terminal sobre a mesma coleção de sessões. |
 | **Fundação de design** | Escala tipográfica, espaçamento, raios e movimento em tokens; contrastes corrigidos para WCAG AA nos dois temas; foco de teclado visível; `prefers-reduced-motion`. |
 
 ---
@@ -47,8 +48,9 @@ e abre um menu:
 
 ```
  [1]  Aplicativo web        mapa, recarga, carteira e pagamento
- [2]  Rodar os testes       suite completa no terminal
- [3]  Sair
+ [2]  Gestao de sessoes     menu de terminal (Estruturas de Dados)
+ [3]  Rodar os testes       suite completa no terminal
+ [4]  Sair
 ```
 
 A opção 1 sobe o servidor e abre o navegador sozinho.
@@ -58,8 +60,9 @@ A opção 1 sobe o servidor e abre o navegador sozinho.
 ```bash
 pip install flask pytest
 
-python app.py    # http://localhost:5001
-pytest -q        # 130 testes
+python app.py      # http://localhost:5001
+python menu.py     # menu de terminal (Estruturas de Dados)
+pytest -q          # 181 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -130,9 +133,11 @@ Arquitetura modular em camadas, sem dependências circulares. Nenhuma regra de
 negócio vive na camada web.
 
 ```
-iniciar.bat             Menu de inicialização para Windows (web · testes)
+iniciar.bat             Menu de inicialização para Windows (web · gestão · testes)
 
 models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
+   ↑
+algoritmos.py           Busca e ordenação manuais + estatísticas (só stdlib)
    ↑
 session_manager.py      Ciclo de vida das sessões e acúmulo de energia
    ↑
@@ -151,21 +156,29 @@ billing.py              Composição da cobrança de uma sessão encerrada
 qr.py                   QR Code simulado em SVG (Pix)
    ↑
 app.py                  Camada web Flask — rotas, validação e orquestração
+menu.py                 Camada de terminal — mesmo sistema, sem Flask
 templates/              14 telas + partial de cabeçalho
 static/                 favicon
-test_chargegrid.py      130 testes automatizados
+test_chargegrid.py      181 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
-Os módulos ficam lado a lado de propósito. O grafo de dependência é uma
-estrela em volta do `app.py` — ele importa 12 dos 13 outros, `models.py` é
-usado por 8, `db.py` por 4, e todo o resto por 0, 1 ou 2. Não há subgrupo que
-converse mais consigo mesmo do que com o resto, então dividir por tema
-esconderia **6 dos 26 imports** de nível de módulo: os outros 20 continuariam
-atravessando a fronteira. Pasta que não esconde nada é gaveta, não camada.
+`app.py` e `menu.py` são dois pontos de entrada para o **mesmo** sistema: a
+mesma classe de sessão, a mesma lista dentro do `SessionManager`, os mesmos
+algoritmos. `menu.py` não importa Flask e roda sem nenhuma dependência
+instalada.
 
-Virar um pacote `chargegrid/` esconderia 14 dos 26 — essa seria estrutura de
-verdade — ao custo de reescrever **173 linhas de import**, 145 delas na suíte
+Os módulos ficam lado a lado de propósito. O grafo de dependência é uma
+estrela em volta do `app.py` — ele importa **12 dos 15** outros módulos de
+produção; `models.py` é importado por 11, `db.py` por 5, `algoritmos.py` e
+`pricing_engine.py` por 3 cada, e todo o resto por 0, 1 ou 2. Os 16 módulos
+somam **35 arestas de import** entre si, e não existe subgrupo que converse
+mais consigo mesmo do que com o resto: dividir por tema deixaria a maioria dos
+imports atravessando a fronteira. Pasta que não esconde nada é gaveta, não
+camada.
+
+Virar um pacote `chargegrid/` esconderia todas elas — essa seria estrutura de
+verdade — ao custo de reescrever **233 linhas de import**, 197 delas na suíte
 de testes. Decidimos que não se paga nesta escala.
 
 ---
@@ -268,7 +281,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**130 testes** em 18 classes. A suíte roda contra um banco temporário por teste,
+**181 testes** em 22 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -285,6 +298,67 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | **Billing** | Abatimento do sinal, teto do abatimento, cashback |
 | **Pagamento** | Três métodos, propriedade da sessão, duplo clique, CSV |
 | **QR simulado** | Determinismo e rótulo acessível |
+| **Estruturas de Dados** | Busca e ordenação manuais, contagens contra as fórmulas fechadas, estabilidade, coleção vazia, guarda anti-`sorted` |
+| **Integração dos algoritmos** | Testes-espião: falham se `get_session` deixar de usar a busca sequencial ou o `rebalance` deixar de usar o insertion sort |
+| **Carregamento do histórico** | Reconstrução das sessões do SQLite, banco ausente e arquivo corrompido |
+| **Menu de terminal** | As 7 opções, validações de entrada, `EOFError` e falha dentro de uma opção |
+
+---
+
+## 🧮 Estruturas de Dados e Algoritmos
+
+A entrega da disciplina **não é um programa separado**: os algoritmos pedidos
+foram implementados dentro do sistema e rodam em produção.
+
+| Algoritmo | Big-O | Onde o sistema usa |
+|---|:-:|---|
+| `busca_sequencial` | O(n) | `SessionManager.get_session` — toda consulta de sessão da camada web |
+| `insertion_sort` | O(n²) / O(n) | `PowerManager.rebalance` — toda vez que um conector é liberado |
+| `busca_binaria` | O(log n) | opção 3 do menu, como contraste medido |
+| `bubble_sort` | O(n²) | opção 4 do menu |
+
+`algoritmos.py` importa **apenas** `models` e a biblioteca padrão — nada de
+Flask, nada de SQLite. Dentro dele não há `.sort(`, `sorted(`, `.index(` nem
+`bisect`, e um teste automatizado varre o arquivo para garantir que continue
+assim.
+
+O menu de terminal abre sobre o histórico real do banco:
+
+```bash
+python menu.py              # menu interativo, 7 opções
+python menu.py --autoteste  # 26 asserções, sem precisar do pytest
+```
+
+```
+=====================================
+        ESTAÇÃO DE RECARGA
+      ChargeGrid Intelligence
+=====================================
+
+1 - Nova sessão de recarga
+2 - Listar sessões
+3 - Buscar sessão
+4 - Ordenar sessões
+5 - Estatísticas
+6 - Comparar algoritmos (Big-O na prática)
+7 - Encerrar
+```
+
+A opção 6 mede busca e ordenação sobre a coleção real, em vários tamanhos de
+entrada. Com 180 sessões no banco:
+
+| n | busca sequencial | busca binária | bubble | n(n−1)/2 | insertion | insertion já ordenada |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 10 | 10 | 4 | 45 | 45 | 32 | 9 |
+| 50 | 50 | 6 | 1.225 | 1.225 | 678 | 49 |
+| 180 | 180 | 8 | 16.110 | 16.110 | 7.933 | 179 |
+
+A coluna do bubble é idêntica à fórmula fechada em todas as linhas, e a do
+insertion em lista já ordenada é exatamente n−1 — o melhor caso linear que
+justifica o insertion no `rebalance`.
+
+A análise completa, com o trecho de código que provoca o crescimento de cada
+algoritmo, está em **`RELATORIO_SPRINT3_DSA.md`** (e no PDF ao lado).
 
 ---
 

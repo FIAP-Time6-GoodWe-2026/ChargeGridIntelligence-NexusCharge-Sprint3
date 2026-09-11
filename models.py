@@ -71,6 +71,8 @@ class ChargingSession:
 
     Atributos de identidade
     -----------------------
+    numero          : ID sequencial e legível da sessão (1, 2, 3...), usado
+                      pelo menu de terminal e pela busca binária
     session_id      : identificador único (UUID4 prefixado com CGI-)
     charger_id      : ID do carregador físico (ex.: "C1", "C2")
     station_id      : ID do posto ao qual o carregador pertence
@@ -113,6 +115,15 @@ class ChargingSession:
     requested_power_kw: float
 
     # Gerados automaticamente
+    #
+    # `numero` é o ID sequencial que o operador digita no menu de terminal.
+    # Existe ao lado do `session_id` porque os dois resolvem problemas
+    # diferentes: o UUID garante unicidade global (é o que vai para o banco,
+    # para o QR Code e para o recibo), enquanto um inteiro curto e crescente
+    # é o que um humano consegue digitar e o que a busca binária precisa como
+    # chave ordenável. Default 0 = "ainda não numerada"; quem numera é
+    # SessionManager (via algoritmos.proximo_numero) ou db.carregar_sessoes.
+    numero: int = 0
     session_id: str = field(default_factory=lambda: f"CGI-{uuid.uuid4().hex[:8].upper()}")
     start_time: datetime.datetime = field(default_factory=datetime.datetime.now)
 
@@ -177,7 +188,7 @@ class ChargingSession:
         custo    = f"R$ {self.total_cost_brl:.2f}"
         duracao  = f"{int(self.duration_minutes)} min"
         return (
-            f"[{self.session_id}] {self.charger_id} | "
+            f"#{self.numero:<4} [{self.session_id}] {self.charger_id} | "
             f"{self.user_name} ({self.user_type.value}) | "
             f"Status: {self.status.value:<10} | "
             f"Potência: {potencia} | Energia: {energia} | "
@@ -191,6 +202,7 @@ class ChargingSession:
         para facilitar formatação e futura persistência em banco.
         """
         return {
+            "numero":             self.numero,
             "session_id":         self.session_id,
             "owner":              self.owner,
             "charger_id":         self.charger_id,

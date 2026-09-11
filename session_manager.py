@@ -8,7 +8,7 @@ SessionManager: responsável pelo ciclo de vida completo das sessões.
 
 Responsabilidades:
     - Criar, consultar, atualizar e encerrar sessões de recarga
-    - Manter o estado em memória (dict indexado por session_id)
+    - Manter o estado em memória (lista de sessões, na ordem de criação)
     - Expor métricas agregadas usadas pelo PowerManager e PricingEngine
     - NÃO decide potência nem calcula tarifas (delegado a outros módulos)
 
@@ -32,6 +32,7 @@ import datetime
 import logging
 from typing import Dict, List, Optional
 
+import algoritmos
 from models import ChargingSession, SessionStatus, UserType
 
 # ---------------------------------------------------------------------------
@@ -57,13 +58,25 @@ class SessionManager:
     Gerenciador de sessões de recarga simultâneas.
 
     Suporta múltiplos postos (stations) e múltiplos carregadores por posto.
-    O estado é mantido em dois dicionários:
-        _sessions  : {session_id → ChargingSession}  — todas as sessões
-        _chargers  : {charger_id → session_id | None} — ocupação dos conectores
+    O estado é mantido em duas estruturas, cada uma escolhida pelo que a
+    disciplina de Estruturas de Dados chamaria de acesso dominante:
+
+        _sessions : List[ChargingSession] — todas as sessões, na ordem em que
+            entraram. É uma **lista** porque a coleção de sessões é percorrida
+            (relatório, estatísticas, ordenação por critério escolhido pelo
+            usuário) muito mais do que acessada por chave, e porque a ordem de
+            chegada é informação de negócio: é ela que dá o ID sequencial.
+            A consulta por ID usa `algoritmos.busca_sequencial`.
+
+        _chargers : {charger_id → session_id | None} — ocupação dos conectores.
+            Continua **dicionário** de propósito: não é a coleção de sessões,
+            é uma tabela fixa de 15 conectores físicos (3 postos × 5), com
+            chave conhecida e imutável, escrita e lida a cada polling. Trocar
+            por lista só acrescentaria varredura sem ganho nenhum.
     """
 
     def __init__(self) -> None:
-        self._sessions: Dict[str, ChargingSession] = {}
+        self._sessions: List[ChargingSession] = []
         # Carregadores pré-cadastrados: 5 por posto, 3 postos = 15 total
         self._chargers: Dict[str, Optional[str]] = {
             f"P{p}-C{c}": None
@@ -102,6 +115,7 @@ class SessionManager:
         user_type: UserType,
         requested_power_kw: float = POTENCIA_NOMINAL_KW,
         owner: str = "",
+        numero: Optional[int] = None,
     ) -> ChargingSession:
         """
         Inicia uma nova sessão de recarga em um carregador disponível.
@@ -114,6 +128,7 @@ class SessionManager:
             requested_power_kw  : potência solicitada (padrão: nominal do HCA)
             owner               : chave da conta dona da sessão (vazio = criada
                                   pelo operador no painel administrativo)
+            numero              : ID sequencial a atribuir; None = próximo livre
 
         Returns:
             ChargingSession recém-criada (status = PREPARING)
@@ -150,9 +165,11 @@ class SessionManager:
             requested_power_kw=requested_power_kw,
             owner=owner,
             status=SessionStatus.PREPARING,
+            numero=(algoritmos.proximo_numero(self._sessions)
+                    if numero is None else numero),
         )
 
-        self._sessions[session.session_id] = session
+        self._sessions.append(session)
         self._chargers[charger_id] = session.session_id
 
         logger.info(
@@ -160,6 +177,38 @@ class SessionManager:
             session.session_id, charger_id, vehicle_id, user_name, user_type.value,
         )
         return session
+
+    def registrar_historico(self, sessao: ChargingSession) -> ChargingSession:
+        """
+        Anexa uma sessão JÁ ENCERRADA à coleção, sem tocar na ocupação de
+        conectores.
+
+        Por que não reusar `create_session`: aquele método inicia uma recarga
+        AGORA — valida o conector, recusa se estiver ocupado e marca a
+        ocupação. São 15 conectores no sistema; carregar algumas centenas de
+        registros históricos por ali quebraria no 16º, e registrar um fato
+        passado não deve reservar hardware no presente. São duas operações
+        distintas e cada uma tem seu método.
+
+        É o caminho usado por `db.carregar_sessoes()` (histórico do SQLite) e
+        pela opção "Nova sessão de recarga" do menu de terminal.
+
+        Args:
+            sessao : sessão pronta, com `numero` já atribuído
+
+        Returns:
+            A própria sessão, agora na coleção.
+
+        Raises:
+            ValueError : se `numero` já existir na coleção (item 8 do
+                         enunciado — não permitir ID duplicado). A checagem
+                         usa `algoritmos.numero_existe`, ou seja, a busca
+                         sequencial avaliada na Sprint.
+        """
+        if algoritmos.numero_existe(self._sessions, sessao.numero):
+            raise ValueError(f"Já existe sessão com ID {sessao.numero}.")
+        self._sessions.append(sessao)
+        return sessao
 
     # ------------------------------------------------------------------
     # Atualização de sessão
@@ -210,7 +259,7 @@ class SessionManager:
         Returns:
             Sessão atualizada (inalterada se inativa ou sem relógio iniciado)
         """
-        session = self._sessions.get(session_id)
+        session = self.get_session(session_id)
         if session is None or not session.is_active:
             return session  # silencioso: nada a acumular
 
@@ -387,16 +436,45 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     def get_session(self, session_id: str) -> Optional[ChargingSession]:
-        """Retorna a sessão ou None se não encontrada."""
-        return self._sessions.get(session_id)
+        """
+        Retorna a sessão ou None se não encontrada.
+
+        Usa **busca sequencial** (`algoritmos.busca_sequencial`) sobre a lista,
+        com `session_id` como chave. É o mesmo algoritmo avaliado na Sprint,
+        exercitado em produção: toda consulta da camada web passa por aqui.
+
+        Complexidade: O(n). O n relevante é pequeno por construção física —
+        são 15 conectores, logo no máximo 15 sessões ativas simultâneas; as
+        encerradas e pagas saem da memória para o SQLite. Nenhuma consulta da
+        camada web percorre o histórico inteiro.
+        """
+        indice, _ = algoritmos.busca_sequencial(
+            self._sessions, session_id, chave=lambda s: s.session_id
+        )
+        return self._sessions[indice] if indice >= 0 else None
+
+    @property
+    def sessions(self) -> List[ChargingSession]:
+        """
+        A lista VIVA de sessões, na ordem de armazenamento.
+
+        Diferente de `list_all()`, que devolve uma cópia: aqui o chamador
+        recebe a própria lista. É o que permite ao menu de terminal ordenar a
+        coleção **in-place** com os algoritmos da Sprint e ver o efeito
+        persistir entre as opções — ordenar por energia na opção 4 e depois
+        listar na opção 2 mostra a nova ordem, como o enunciado espera.
+
+        Quem só quer ler sem risco de alterar a ordem usa `list_all()`.
+        """
+        return self._sessions
 
     def list_active(self) -> List[ChargingSession]:
         """Lista todas as sessões em andamento (CHARGING ou THROTTLED)."""
-        return [s for s in self._sessions.values() if s.is_active]
+        return [s for s in self._sessions if s.is_active]
 
     def list_all(self) -> List[ChargingSession]:
         """Lista todas as sessões (ativas e encerradas)."""
-        return list(self._sessions.values())
+        return list(self._sessions)
 
     def total_allocated_power_kw(self) -> float:
         """Soma da potência alocada em todas as sessões ativas."""
@@ -431,7 +509,7 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     def _get_or_raise(self, session_id: str) -> ChargingSession:
-        session = self._sessions.get(session_id)
+        session = self.get_session(session_id)
         if session is None:
             raise ValueError(f"Sessão '{session_id}' não encontrada.")
         return session

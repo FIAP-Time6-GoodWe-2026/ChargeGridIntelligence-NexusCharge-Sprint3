@@ -83,19 +83,21 @@ REM ---------------------------------------------------------------------------
 echo  ----------------------------------------------------------
 echo.
 echo   [1]  Aplicativo web        mapa, recarga, carteira e pagamento
-echo   [2]  Rodar os testes       suite completa no terminal
-echo   [3]  Sair
+echo   [2]  Gestao de sessoes     menu de terminal (Estruturas de Dados)
+echo   [3]  Rodar os testes       suite completa no terminal
+echo   [4]  Sair
 echo.
 set "OPCAO="
 set /p "OPCAO=  Escolha [1]: "
 if not defined OPCAO set "OPCAO=1"
 
 if "%OPCAO%"=="1" goto WEB
-if "%OPCAO%"=="2" goto TESTES
-if "%OPCAO%"=="3" exit /b 0
+if "%OPCAO%"=="2" goto MENU_DSA
+if "%OPCAO%"=="3" goto TESTES
+if "%OPCAO%"=="4" exit /b 0
 
 echo.
-echo  Opcao invalida: "%OPCAO%". Escolha de 1 a 3.
+echo  Opcao invalida: "%OPCAO%". Escolha de 1 a 4.
 echo.
 goto MENU
 
@@ -114,6 +116,17 @@ echo.
 
 REM O proprio app.py imprime as contas de demonstracao no banner.
 %PY% app.py
+goto FIM
+
+REM ---------------------------------------------------------------------------
+:MENU_DSA
+REM  Menu de terminal da entrega de Estruturas de Dados. Roda sobre o mesmo
+REM  sistema do aplicativo web: mesma classe de sessao, mesma lista, mesmos
+REM  algoritmos de busca e ordenacao. Nao precisa do Flask.
+REM ---------------------------------------------------------------------------
+echo.
+echo  ----------------------------------------------------------
+%PY% menu.py
 goto FIM
 
 REM ---------------------------------------------------------------------------

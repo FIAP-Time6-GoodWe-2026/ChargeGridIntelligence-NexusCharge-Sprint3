@@ -12,6 +12,10 @@ Guarda o que não pode desaparecer quando o processo Flask reinicia:
     reservas    — reservas de conector com sinal já cobrado
     sessoes     — histórico de sessões encerradas (relatório, CSV, análise)
 
+`carregar_sessoes()` faz o caminho inverso do arquivamento: reconstrói as
+linhas da tabela `sessoes` como objetos `ChargingSession`, para que o menu de
+terminal (`menu.py`) opere sobre a mesma classe que a camada web usa.
+
 Sessões ATIVAS continuam vivendo no SessionManager em memória: este módulo
 não substitui o SessionManager, apenas arquiva o que já terminou.
 
@@ -24,9 +28,15 @@ Decisão de design — uma conexão nova por operação:
 
 from __future__ import annotations
 
+import datetime
+import logging
 import pathlib
 import sqlite3
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, List, Optional
+
+from models import ChargingSession, SessionStatus, UserType
+
+logger = logging.getLogger(__name__)
 
 # O arquivo do banco fica ao lado do código, para que `python app.py` funcione
 # de qualquer diretório de trabalho.
@@ -183,3 +193,93 @@ if __name__ == "__main__":
     execute("DELETE FROM carteira WHERE usuario = ?", ("__teste__",))
     assert query_one("SELECT 1 FROM carteira WHERE usuario = ?", ("__teste__",)) is None
     print(f"db.py OK — banco em {DB_PATH}")
+
+
+# ---------------------------------------------------------------------------
+# Reconstrução do histórico como objetos de domínio
+# ---------------------------------------------------------------------------
+
+def _para_datetime(texto: str, alternativa: datetime.datetime) -> datetime.datetime:
+    """
+    Converte o texto gravado no banco em datetime, sem levantar exceção.
+
+    A tabela guarda datas como texto ISO ("2026-07-27 12:00:00"). Linhas
+    antigas ou importadas de fora podem vir em formato diferente ou vazias —
+    nesse caso devolve `alternativa` em vez de quebrar o carregamento inteiro
+    por causa de um registro.
+    """
+    try:
+        return datetime.datetime.fromisoformat(texto)
+    except (TypeError, ValueError):
+        return alternativa
+
+
+def carregar_sessoes() -> List[ChargingSession]:
+    """
+    Reconstrói as sessões pagas do histórico como objetos `ChargingSession`.
+
+    Ordena por data de início e numera sequencialmente a partir de 1: esse
+    `numero` é o ID que o enunciado da Sprint usa, o que o menu aceita
+    digitado e a chave da busca binária. Ordenar por `inicio` no SQL é
+    deliberado e não conflita com o conteúdo avaliado — quem ordena aqui é o
+    banco de dados, com a cláusula ORDER BY, e o que está sendo estabelecido é
+    a numeração dos registros, não o algoritmo de ordenação da Sprint. As
+    ordenações que o usuário pede no menu passam por `algoritmos.bubble_sort`
+    e `algoritmos.insertion_sort`.
+
+    **NUNCA escreve no banco.** O menu é ferramenta de leitura e análise; a
+    sessão cadastrada à mão nele vive só na memória daquela execução.
+
+    Returns:
+        Lista de sessões, possivelmente vazia. Banco ausente, tabela ainda não
+        criada ou arquivo corrompido devolvem **lista vazia** em vez de
+        exceção: o item 8 do enunciado exige que o programa não encerre
+        inesperadamente, e faturamento não pode derrubar o processo por causa
+        de leitura. O menu abre vazio e o cadastro manual preenche.
+    """
+    try:
+        linhas = query_all(
+            "SELECT * FROM sessoes WHERE metodo_pagto <> ''"
+            " ORDER BY inicio, session_id"
+        )
+    except sqlite3.Error as erro:
+        logger.warning("Histórico indisponível (%s) — carregando vazio.", erro)
+        return []
+
+    sessoes: List[ChargingSession] = []
+    for indice, linha in enumerate(linhas, start=1):
+        try:
+            inicio = _para_datetime(linha["inicio"], datetime.datetime.now())
+            fim = _para_datetime(
+                linha["fim"],
+                inicio + datetime.timedelta(minutes=float(linha["duracao_min"] or 0)),
+            )
+            try:
+                categoria = UserType(linha["user_type"])
+            except ValueError:
+                categoria = UserType.STANDARD
+
+            potencia = float(linha["potencia_kw"] or 0.0)
+            sessoes.append(ChargingSession(
+                numero=indice,
+                session_id=linha["session_id"],
+                charger_id=linha["charger_id"],
+                station_id=linha["station_id"],
+                vehicle_id=linha["vehicle_id"],
+                user_name=linha["user_name"],
+                user_type=categoria,
+                owner=linha["usuario"],
+                requested_power_kw=potencia,
+                allocated_power_kw=potencia,
+                start_time=inicio,
+                end_time=fim,
+                energy_kwh=float(linha["energia_kwh"] or 0.0),
+                tariff_kwh=float(linha["tarifa_kwh"] or 0.0),
+                total_cost_brl=float(linha["custo_brl"] or 0.0),
+                status=SessionStatus.FINISHED,
+            ))
+        except (TypeError, ValueError, IndexError, KeyError) as erro:
+            logger.warning("Registro histórico ignorado (%s): %s",
+                           erro, linha["session_id"] if linha else "?")
+
+    return sessoes

@@ -1641,3 +1641,564 @@ class TestRelatorioOrdenavel:
         html = client.get("/relatorio").data.decode()
         assert 'id="busca-sessao"' not in html
         assert "Nenhuma sessão registrada" in html
+
+
+# ===========================================================================
+# Estruturas de Dados e Algoritmos (Sprint 3 — disciplina DSA)
+# ===========================================================================
+
+def _sessao(numero: int, energia: float, custo: float, minutos: float,
+            conector: str = "P1-C1"):
+    """
+    Monta uma sessão ENCERRADA com valores controlados.
+
+    O tempo é convertido em `end_time` porque `duration_minutes` é uma
+    propriedade derivada dos carimbos de tempo — é o mesmo caminho que o
+    cadastro manual do `menu.py` percorre.
+    """
+    import datetime
+
+    from models import ChargingSession, SessionStatus, UserType
+
+    inicio = datetime.datetime(2026, 9, 1, 12, 0, 0)
+    return ChargingSession(
+        numero=numero,
+        charger_id=conector,
+        station_id=conector.split("-")[0],
+        vehicle_id=f"TST{numero:04d}",
+        user_name=f"Motorista {numero}",
+        user_type=UserType.STANDARD,
+        requested_power_kw=11.0,
+        allocated_power_kw=11.0,
+        start_time=inicio,
+        end_time=inicio + datetime.timedelta(minutes=minutos),
+        energy_kwh=energia,
+        tariff_kwh=1.2,
+        total_cost_brl=custo,
+        status=SessionStatus.FINISHED,
+    )
+
+
+@pytest.fixture
+def colecao():
+    """
+    Cinco sessões fora de ordem em todos os critérios avaliados.
+
+    IDs em 5, 3, 1, 4, 2 de propósito: nenhuma ordenação pode "funcionar por
+    acidente" porque a lista já estivesse quase ordenada.
+    """
+    return [
+        _sessao(5, energia=30.0, custo=36.00, minutos=180.0),
+        _sessao(3, energia=10.0, custo=12.00, minutos=60.0),
+        _sessao(1, energia=50.0, custo=60.00, minutos=300.0),
+        _sessao(4, energia=20.0, custo=24.00, minutos=120.0),
+        _sessao(2, energia=40.0, custo=48.00, minutos=240.0),
+    ]
+
+
+class TestAlgoritmosDSA:
+    """
+    Cobre os algoritmos avaliados na disciplina de Estruturas de Dados.
+
+    Estes testes existem por dois motivos além da corretude: provar que as
+    contagens de comparações batem com as fórmulas fechadas usadas no
+    relatório, e impedir que alguém "simplifique" `algoritmos.py` com um
+    recurso nativo mais tarde — o que seria reprovação direta.
+    """
+
+    # -- busca sequencial ------------------------------------------------
+
+    def test_busca_sequencial_encontra(self, colecao):
+        import algoritmos
+        indice, comparacoes = algoritmos.busca_sequencial(colecao, 1)
+        assert indice == 2
+        assert colecao[indice].numero == 1
+        assert comparacoes == 3, "uma comparação por elemento até achar"
+
+    def test_busca_sequencial_primeiro_elemento_custa_uma(self, colecao):
+        import algoritmos
+        indice, comparacoes = algoritmos.busca_sequencial(colecao, 5)
+        assert (indice, comparacoes) == (0, 1), "melhor caso é O(1)"
+
+    def test_busca_sequencial_nao_encontra(self, colecao):
+        import algoritmos
+        indice, comparacoes = algoritmos.busca_sequencial(colecao, 99)
+        assert indice == -1
+        assert comparacoes == len(colecao), "pior caso varre tudo"
+
+    def test_busca_sequencial_lista_vazia(self):
+        import algoritmos
+        assert algoritmos.busca_sequencial([], 1) == (-1, 0)
+
+    def test_busca_sequencial_aceita_outra_chave(self, colecao):
+        """É essa flexibilidade que permite ao get_session buscar por UUID."""
+        import algoritmos
+        alvo = colecao[3].session_id
+        indice, _ = algoritmos.busca_sequencial(
+            colecao, alvo, chave=lambda s: s.session_id
+        )
+        assert indice == 3
+
+    # -- busca binária ---------------------------------------------------
+
+    def test_busca_binaria_encontra_em_lista_ordenada(self, colecao):
+        import algoritmos
+        algoritmos.insertion_sort(colecao, algoritmos.CRITERIOS["1"][1])
+        for esperado in (1, 2, 3, 4, 5):
+            indice, comparacoes = algoritmos.busca_binaria(colecao, esperado)
+            assert colecao[indice].numero == esperado
+            assert comparacoes <= 3, "log2(5) arredondado para cima é 3"
+
+    def test_busca_binaria_nao_encontra(self, colecao):
+        import algoritmos
+        algoritmos.insertion_sort(colecao, algoritmos.CRITERIOS["1"][1])
+        indice, comparacoes = algoritmos.busca_binaria(colecao, 99)
+        assert indice == -1
+        assert comparacoes <= 3
+
+    def test_busca_binaria_lista_vazia(self):
+        import algoritmos
+        assert algoritmos.busca_binaria([], 1) == (-1, 0)
+
+    def test_busca_binaria_e_mais_barata_que_sequencial(self):
+        """O contraste do item 10 do enunciado, medido."""
+        import algoritmos
+        grande = [_sessao(n, energia=n, custo=n, minutos=n)
+                  for n in range(1, 201)]
+        ausente = 999
+        _, c_seq = algoritmos.busca_sequencial(grande, ausente)
+        _, c_bin = algoritmos.busca_binaria(grande, ausente)
+        assert c_seq == 200
+        assert c_bin == 8, "log2(200) arredondado para cima é 8"
+
+    # -- ordenação -------------------------------------------------------
+
+    def test_bubble_sort_por_id(self, colecao):
+        import algoritmos
+        algoritmos.bubble_sort(colecao, algoritmos.CRITERIOS["1"][1])
+        assert [s.numero for s in colecao] == [1, 2, 3, 4, 5]
+
+    def test_bubble_sort_conta_exatamente_n_n_menos_1_sobre_2(self, colecao):
+        import algoritmos
+        n = len(colecao)
+        comparacoes = algoritmos.bubble_sort(colecao,
+                                            algoritmos.CRITERIOS["1"][1])
+        assert comparacoes == n * (n - 1) // 2 == 10
+
+    def test_bubble_sort_nao_tem_parada_antecipada(self, colecao):
+        """Lista já ordenada continua custando n(n-1)/2 — é o combinado."""
+        import algoritmos
+        chave = algoritmos.CRITERIOS["1"][1]
+        algoritmos.bubble_sort(colecao, chave)
+        n = len(colecao)
+        assert algoritmos.bubble_sort(colecao, chave) == n * (n - 1) // 2
+
+    def test_insertion_sort_por_energia(self, colecao):
+        import algoritmos
+        algoritmos.insertion_sort(colecao, algoritmos.CRITERIOS["2"][1])
+        assert [s.energy_kwh for s in colecao] == [10.0, 20.0, 30.0, 40.0, 50.0]
+
+    def test_insertion_sort_melhor_caso_custa_n_menos_1(self, colecao):
+        import algoritmos
+        chave = algoritmos.CRITERIOS["2"][1]
+        algoritmos.insertion_sort(colecao, chave)
+        assert algoritmos.insertion_sort(colecao, chave) == len(colecao) - 1
+
+    def test_insertion_sort_pior_caso_iguala_bubble(self):
+        """Ordem inversa: o insertion degenera para n(n-1)/2, como a teoria diz."""
+        import algoritmos
+        n = 6
+        invertida = [_sessao(i, energia=n - i, custo=1.0, minutos=1.0)
+                     for i in range(1, n + 1)]
+        chave = algoritmos.CRITERIOS["2"][1]
+        assert algoritmos.insertion_sort(invertida, chave) == n * (n - 1) // 2
+
+    def test_ordenacoes_sao_estaveis(self):
+        """
+        Importa no rebalance: sessões com a mesma potência são restauradas na
+        ordem de chegada, então a decisão de potência é reproduzível.
+        """
+        import algoritmos
+        empatadas = [_sessao(n, energia=7.0, custo=1.0, minutos=1.0)
+                     for n in (1, 2, 3, 4)]
+        chave = algoritmos.CRITERIOS["2"][1]
+
+        alvo = list(empatadas)
+        algoritmos.bubble_sort(alvo, chave)
+        assert [s.numero for s in alvo] == [1, 2, 3, 4]
+
+        alvo = list(empatadas)
+        algoritmos.insertion_sort(alvo, chave)
+        assert [s.numero for s in alvo] == [1, 2, 3, 4]
+
+    def test_ordenacao_e_in_place(self, colecao):
+        """A mesma lista é reordenada — é o que faz a ordem persistir no menu."""
+        import algoritmos
+        original = colecao
+        algoritmos.bubble_sort(colecao, algoritmos.CRITERIOS["3"][1])
+        assert colecao is original
+        assert [s.total_cost_brl for s in colecao] == [12.0, 24.0, 36.0, 48.0, 60.0]
+
+    def test_todos_os_quatro_criterios_ordenam(self, colecao):
+        import algoritmos
+        for tecla, (rotulo, chave) in algoritmos.CRITERIOS.items():
+            alvo = list(colecao)
+            algoritmos.insertion_sort(alvo, chave)
+            valores = [chave(s) for s in alvo]
+            assert valores == sorted(valores), f"critério {tecla} ({rotulo})"
+
+    # -- estatísticas ----------------------------------------------------
+
+    def test_estatisticas_os_seis_valores(self, colecao):
+        import algoritmos
+        est = algoritmos.estatisticas(colecao)
+        assert est["total_sessoes"] == 5
+        assert est["energia_total_kwh"] == 150.0
+        assert est["faturamento_brl"] == 180.0
+        assert est["ticket_medio_brl"] == 36.0
+        assert est["maior_consumo_kwh"] == 50.0
+        assert est["menor_consumo_kwh"] == 10.0
+
+    def test_estatisticas_valores_de_apoio(self, colecao):
+        import algoritmos
+        est = algoritmos.estatisticas(colecao)
+        assert est["tempo_total_min"] == 900.0
+        assert est["energia_media_kwh"] == 30.0
+        assert est["numero_maior_consumo"] == 1
+        assert est["numero_menor_consumo"] == 3
+
+    def test_estatisticas_colecao_vazia_devolve_zeros(self):
+        """min() de sequência vazia é ValueError — o item 8 proíbe quebrar."""
+        import algoritmos
+        est = algoritmos.estatisticas([])
+        assert est["total_sessoes"] == 0
+        assert all(valor == 0 for valor in est.values())
+
+    def test_estatisticas_uma_sessao(self):
+        import algoritmos
+        est = algoritmos.estatisticas([_sessao(1, 8.0, 9.6, 48.0)])
+        assert est["maior_consumo_kwh"] == est["menor_consumo_kwh"] == 8.0
+        assert est["ticket_medio_brl"] == 9.6
+
+    # -- apoio ao cadastro -----------------------------------------------
+
+    def test_numero_existe(self, colecao):
+        import algoritmos
+        assert algoritmos.numero_existe(colecao, 3) is True
+        assert algoritmos.numero_existe(colecao, 99) is False
+        assert algoritmos.numero_existe([], 1) is False
+
+    def test_proximo_numero(self, colecao):
+        import algoritmos
+        assert algoritmos.proximo_numero(colecao) == 6
+        assert algoritmos.proximo_numero([]) == 1
+
+    # -- guardas de conformidade com o enunciado -------------------------
+
+    def test_algoritmos_nao_usam_sort_nem_sorted(self):
+        """
+        O enunciado permite recursos nativos "nas demais partes do sistema",
+        mas não dentro dos algoritmos avaliados. Esta guarda impede que alguém
+        "simplifique" algoritmos.py depois — seria reprovação direta.
+        """
+        import algoritmos
+
+        fonte = pathlib.Path(algoritmos.__file__).read_text(encoding="utf-8")
+        for proibido in (".sort(", "sorted(", ".index(", "bisect"):
+            assert proibido not in fonte, f"{proibido} em algoritmos.py"
+
+    def test_menu_nao_importa_flask(self):
+        """
+        O menu é um segundo ponto de entrada do MESMO sistema, e precisa rodar
+        com Python puro — sem nenhuma dependência externa instalada.
+        """
+        import menu
+
+        for modulo in (menu, __import__("algoritmos"),
+                       __import__("session_manager"), __import__("db")):
+            fonte = pathlib.Path(modulo.__file__).read_text(encoding="utf-8")
+            assert "import flask" not in fonte.lower(), modulo.__name__
+
+    def test_algoritmos_so_depende_de_models(self):
+        """Isolamento do módulo avaliado: nada do app entra aqui."""
+        import algoritmos
+
+        fonte = pathlib.Path(algoritmos.__file__).read_text(encoding="utf-8")
+        for proibido in ("import db", "import session_manager",
+                         "import power_manager", "import app"):
+            assert proibido not in fonte, proibido
+
+
+class TestIntegracaoAlgoritmosNoSistema:
+    """
+    Prova que os algoritmos avaliados rodam no sistema real, não só no menu.
+
+    É o que os critérios 3 e 4 da rubrica chamam de "bem integrada" e
+    "integrada ao sistema".
+    """
+
+    def test_get_session_usa_busca_sequencial(self, sm, monkeypatch):
+        """Se a busca sequencial parar de ser chamada, este teste quebra."""
+        import algoritmos
+        import session_manager
+
+        from models import UserType
+
+        s = sm.create_session("P1-C1", "TST-0001", "Test", UserType.STANDARD)
+        chamadas = []
+        original = algoritmos.busca_sequencial
+
+        def espiao(*args, **kwargs):
+            chamadas.append(args[1])
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(session_manager.algoritmos, "busca_sequencial",
+                            espiao)
+        assert sm.get_session(s.session_id) is s
+        assert chamadas == [s.session_id]
+
+    def test_get_session_devolve_none_para_inexistente(self, sm):
+        assert sm.get_session("CGI-NAOEXISTE") is None
+
+    def test_sessions_e_uma_lista_viva(self, sm):
+        from models import UserType
+
+        assert isinstance(sm.sessions, list)
+        assert sm.sessions == []
+        sm.create_session("P1-C1", "TST-0001", "Test", UserType.STANDARD)
+        assert len(sm.sessions) == 1
+        assert sm.sessions is not sm.list_all(), "list_all devolve cópia"
+
+    def test_create_session_numera_sequencialmente(self, sm):
+        from models import UserType
+
+        numeros = [sm.create_session(f"P1-C{i}", f"TST-000{i}", "Test",
+                                     UserType.STANDARD).numero
+                   for i in range(1, 4)]
+        assert numeros == [1, 2, 3]
+
+    def test_registrar_historico_nao_ocupa_conector(self, sm):
+        """
+        É a razão de o método existir: create_session recusaria o 16º registro
+        (são 15 conectores) e reservaria hardware para um fato passado.
+        """
+        for numero in range(1, 21):
+            sm.registrar_historico(_sessao(numero, 10.0, 12.0, 60.0))
+        assert len(sm.sessions) == 20
+        assert all(sid is None for sid in sm.list_chargers().values())
+
+    def test_registrar_historico_recusa_id_duplicado(self, sm):
+        sm.registrar_historico(_sessao(7, 10.0, 12.0, 60.0))
+        with pytest.raises(ValueError, match="7"):
+            sm.registrar_historico(_sessao(7, 99.0, 99.0, 99.0))
+        assert len(sm.sessions) == 1
+
+    def test_rebalance_usa_insertion_sort(self, sm, pm, pe, monkeypatch):
+        import algoritmos
+        import power_manager
+
+        from models import SessionStatus, UserType
+
+        chamadas = []
+        original = algoritmos.insertion_sort
+
+        def espiao(colecao, chave):
+            chamadas.append(len(colecao))
+            return original(colecao, chave)
+
+        monkeypatch.setattr(power_manager.algoritmos, "insertion_sort", espiao)
+
+        # 4 sessões de 11 kW num limite de 33 kW forçam throttle
+        criadas = [_start(sm, pm, pe, f"P1-C{i}", UserType.STANDARD)[0]
+                   for i in range(1, 5)]
+        assert any(s.status == SessionStatus.THROTTLED for s in sm.list_active())
+
+        sm.finish_session(criadas[0].session_id)
+        resultado = pm.rebalance()
+
+        assert chamadas, "o rebalance precisa passar pelo insertion sort"
+        assert resultado is not None
+        assert "insertion sort" in resultado.message
+        assert "comparações" in resultado.message
+
+    def test_rebalance_ordena_menor_potencia_primeiro(self, sm, pm, pe):
+        """
+        O insertion sort tem que deixar a fila em ordem crescente de potência
+        alocada — é o que dá prioridade a quem foi mais reduzido.
+        """
+        from models import SessionStatus, UserType
+
+        criadas = [_start(sm, pm, pe, f"P1-C{i}", UserType.STANDARD)[0]
+                   for i in range(1, 5)]
+        sm.finish_session(criadas[0].session_id)
+        resultado = pm.rebalance()
+        assert resultado is not None
+        assert not any(s.status == SessionStatus.FAULTED
+                       for s in sm.list_active())
+        assert sm.total_allocated_power_kw() <= pm.limit_kw + 0.01
+
+    def test_rebalance_respeita_limite_com_o_sort_manual(self, sm, pm, pe):
+        from models import UserType
+
+        criadas = [_start(sm, pm, pe, f"P1-C{i}", UserType.SUBSCRIBER)[0]
+                   for i in range(1, 6)]
+        sm.finish_session(criadas[0].session_id)
+        sm.finish_session(criadas[1].session_id)
+        pm.rebalance()
+        assert sm.total_allocated_power_kw() <= pm.limit_kw + 0.01
+
+
+class TestCarregamentoDoHistorico:
+    """`db.carregar_sessoes()` — a ponte entre o SQLite e a coleção do menu."""
+
+    def test_banco_vazio_devolve_lista_vazia(self):
+        import db
+
+        assert db.carregar_sessoes() == []
+
+    def test_tabela_ausente_devolve_lista_vazia(self, tmp_path, monkeypatch):
+        """Banco inexistente não pode derrubar o menu (item 8 do enunciado)."""
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", tmp_path / "nao_existe.db")
+        assert db.carregar_sessoes() == []
+
+    def test_arquivo_corrompido_devolve_lista_vazia(self, tmp_path, monkeypatch):
+        import db
+
+        lixo = tmp_path / "lixo.db"
+        lixo.write_bytes(b"isto nao e um banco sqlite" * 40)
+        monkeypatch.setattr(db, "DB_PATH", lixo)
+        assert db.carregar_sessoes() == []
+
+    def test_reconstroi_sessao_e_numera_de_1(self):
+        import db
+
+        from models import SessionStatus
+
+        for indice in range(3):
+            db.execute(
+                "INSERT INTO sessoes (session_id, usuario, charger_id,"
+                " station_id, vehicle_id, user_name, user_type, inicio, fim,"
+                " hora_inicio, duracao_min, potencia_kw, energia_kwh,"
+                " tarifa_kwh, custo_brl, metodo_pagto)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (f"CGI-TESTE{indice}", "luiz", "P1-C1", "P1", "ABC1D23",
+                 "Teste", "P", f"2026-09-0{indice + 1} 12:00:00",
+                 f"2026-09-0{indice + 1} 13:00:00", 12, 60.0, 10.0, 10.0,
+                 1.2, 12.0, "PIX"),
+            )
+
+        sessoes = db.carregar_sessoes()
+        assert [s.numero for s in sessoes] == [1, 2, 3]
+        assert all(s.status == SessionStatus.FINISHED for s in sessoes)
+        assert sessoes[0].duration_minutes == 60.0
+        assert sessoes[0].energy_kwh == 10.0
+        assert sessoes[0].total_cost_brl == 12.0
+
+    def test_ignora_sessao_sem_pagamento(self):
+        import db
+
+        db.execute(
+            "INSERT INTO sessoes (session_id, usuario, charger_id, station_id,"
+            " vehicle_id, user_name, user_type, inicio, fim, hora_inicio,"
+            " duracao_min, potencia_kw, energia_kwh, tarifa_kwh, custo_brl,"
+            " metodo_pagto)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("CGI-SEMPAGTO", "luiz", "P1-C1", "P1", "ABC1D23", "Teste", "P",
+             "2026-09-01 12:00:00", "2026-09-01 13:00:00", 12, 60.0, 10.0,
+             10.0, 1.2, 12.0, ""),
+        )
+        assert db.carregar_sessoes() == []
+
+
+class TestMenuAutoteste:
+    """O `--autoteste` do menu é entregável: precisa continuar passando."""
+
+    def test_autoteste_passa(self, capsys):
+        import menu
+
+        assert menu.autoteste() == 0
+        saida = capsys.readouterr().out
+        assert "FALHOU" not in saida
+        assert "Todas as verificações passaram" in saida
+
+    def test_menu_tem_as_funcoes_que_o_enunciado_pede(self):
+        import menu
+
+        for nome in ("cadastrar_sessao", "listar_sessoes", "buscar_sessao",
+                     "ordenar_sessoes", "mostrar_estatisticas",
+                     "comparar_algoritmos", "ler_numero", "ler_texto", "main"):
+            assert callable(getattr(menu, nome)), nome
+
+    def test_menu_exibe_as_sete_opcoes(self, capsys):
+        import menu
+
+        menu.exibir_menu()
+        saida = capsys.readouterr().out
+        for numero in range(1, 8):
+            assert f"{numero} - " in saida
+        assert "ESTAÇÃO DE RECARGA" in saida
+
+    def test_ler_numero_recusa_texto_e_devolve_none(self, monkeypatch):
+        """Três tentativas com texto: devolve None em vez de estourar."""
+        import menu
+
+        entradas = iter(["abc", "xyz", "!!"])
+        monkeypatch.setattr("builtins.input", lambda _: next(entradas))
+        assert menu.ler_numero("Valor") is None
+
+    def test_ler_numero_recusa_fora_da_faixa(self, monkeypatch):
+        import menu
+
+        entradas = iter(["-5", "2000", "42"])
+        monkeypatch.setattr("builtins.input", lambda _: next(entradas))
+        assert menu.ler_numero("Valor", minimo=0, maximo=1000) == 42.0
+
+    def test_ler_numero_aceita_virgula_decimal(self, monkeypatch):
+        import menu
+
+        monkeypatch.setattr("builtins.input", lambda _: "18,5")
+        assert menu.ler_numero("Energia") == 18.5
+
+    def test_ler_numero_enter_vazio_cancela(self, monkeypatch):
+        import menu
+
+        monkeypatch.setattr("builtins.input", lambda _: "")
+        assert menu.ler_numero("Valor") is None
+
+    def test_menu_encerra_na_opcao_7(self, monkeypatch, capsys):
+        import menu
+
+        entradas = iter(["99", "", "7"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(entradas))
+        assert menu.main() == 0
+        saida = capsys.readouterr().out
+        assert "inválida" in saida, "opção inválida precisa avisar"
+        assert "Encerrando" in saida
+
+    def test_menu_sobrevive_a_eof(self, monkeypatch, capsys):
+        import menu
+
+        def estoura(_=""):
+            raise EOFError
+
+        monkeypatch.setattr("builtins.input", estoura)
+        assert menu.main() == 0
+        assert "Encerrado pelo usuário" in capsys.readouterr().out
+
+    def test_menu_sobrevive_a_falha_dentro_de_uma_opcao(self, monkeypatch,
+                                                       capsys):
+        """A rede de segurança do item 8: erro numa opção não derruba o menu."""
+        import menu
+
+        def explode(_gerenciador):
+            raise RuntimeError("falha simulada")
+
+        monkeypatch.setitem(menu.ACOES, "5", explode)
+        entradas = iter(["5", "7"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(entradas))
+        assert menu.main() == 0
+        saida = capsys.readouterr().out
+        assert "Falha inesperada" in saida
+        assert "menu continua ativo" in saida
