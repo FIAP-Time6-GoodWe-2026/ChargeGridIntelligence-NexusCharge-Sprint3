@@ -127,6 +127,11 @@
 
 /* ── QR Pix ──────────────────────────────────────────────────────────────── */
 .qr-caixa {
+    /* O elemento é um <span>: sem display de bloco, width e height são
+       ignorados e o SVG interno (width/height 100%) passa a resolver a
+       percentagem contra o cartão inteiro — o QR explodia para ~530px.
+       Só aparecia com o Pix selecionado, que é quando este bloco existe. */
+    display: block;
     width: 190px; height: 190px;
     margin: var(--sp-3) 0;
     padding: var(--sp-3);
