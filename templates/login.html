@@ -239,6 +239,56 @@ body { animation: none; }            /* login não precisa de animação de entr
     .login-regua, .login-assinatura, .login-pilares { display: none; }
     .login-form-lado { padding: var(--sp-6) var(--sp-4) var(--sp-7); }
 }
+    /* ── Recarga sem cadastro ─────────────────────────────────────────── */
+    .sem-cadastro {
+        margin-top: var(--sp-5);
+        padding-top: var(--sp-5);
+        border-top: 1px solid var(--cor-borda);
+    }
+    .sem-cadastro-titulo {
+        font-size: var(--fs-2xs);
+        font-weight: var(--fw-semibold);
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: var(--cor-texto-secundario);
+        text-align: center;
+        margin-bottom: var(--sp-4);
+    }
+    .sem-cadastro-corpo {
+        display: flex;
+        align-items: center;
+        gap: var(--sp-4);
+    }
+    .sem-cadastro-qr {
+        flex: 0 0 auto;
+        width: 96px;
+        height: 96px;
+        color: var(--cor-texto);
+    }
+    .sem-cadastro-qr svg { width: 100%; height: 100%; display: block; }
+    .sem-cadastro-texto { flex: 1; min-width: 0; }
+    .sem-cadastro-texto p {
+        font-size: var(--fs-sm);
+        color: var(--cor-texto-secundario);
+        margin: 0 0 var(--sp-3);
+        line-height: var(--lh-normal);
+    }
+    .sem-cadastro-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--sp-2);
+        font-size: var(--fs-sm);
+        font-weight: var(--fw-semibold);
+        text-decoration: none;
+        color: var(--cor-primaria);
+        border: 1px solid var(--cor-primaria);
+        border-radius: var(--r-md);
+        padding: 9px 14px;
+    }
+    .sem-cadastro-link:hover { background: rgba(192, 0, 0, .08); }
+    @media (max-width: 420px) {
+        .sem-cadastro-corpo { flex-direction: column; text-align: center; }
+    }
 </style>
 {% endblock %}
 
@@ -373,6 +423,30 @@ body { animation: none; }            /* login não precisa de animação de entr
                     Clique em uma conta para preencher o formulário.
                     Senha de todas: <code>{{ senha_demo }}</code>
                 </p>
+            </div>
+
+            <div class="sem-cadastro">
+                <div class="sem-cadastro-titulo">Ou carregue sem cadastro</div>
+                <div class="sem-cadastro-corpo">
+                    <div class="sem-cadastro-qr" aria-hidden="true">{{ qr_totem | safe }}</div>
+                    <div class="sem-cadastro-texto">
+                        <p>
+                            Aponte a câmera para o QR Code do totem, informe a placa
+                            e autorize a caução de R$ {{ caucao | brl }}. No fim, o que
+                            você não usou volta para você.
+                        </p>
+                        <a href="{{ url_for('totem_postos') }}" class="sem-cadastro-link">
+                            Simular leitura do QR
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round"
+                                 stroke-linejoin="round" aria-hidden="true"
+                                 style="width:16px;height:16px">
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                                <polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
     </main>

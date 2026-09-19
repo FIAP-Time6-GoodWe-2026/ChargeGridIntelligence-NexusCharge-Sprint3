@@ -2314,3 +2314,156 @@ class TestTarifaFonteUnica:
         for nome in ("TARIFA_BASE_KWH", "DESCONTO_ASSINANTE",
                      "MULTIPLICADOR_PICO", "TAXA_MINIMA_SESSAO"):
             assert f"{nome}:" not in fonte, f"{nome} voltou a ser declarado aqui"
+
+
+# ---------------------------------------------------------------------------
+# Recarga sem cadastro (QR do totem)
+# ---------------------------------------------------------------------------
+
+class TestRecargaSemCadastro:
+    """
+    A modalidade avulsa: o motorista chega pelo QR, deixa uma caução e carrega.
+
+    O que estes testes protegem é a razão de a modalidade existir — nenhum
+    passo pode voltar a exigir conta, senha ou alguém do posto para liberar.
+    """
+
+    def test_estorno_devolve_o_que_sobrou_da_caucao(self):
+        import avulso
+        assert avulso.estorno(18.40) == round(avulso.CAUCAO_BRL - 18.40, 2)
+
+    def test_caucao_totalmente_consumida_nao_devolve_nada(self):
+        import avulso
+        assert avulso.estorno(avulso.CAUCAO_BRL) == 0.0
+
+    def test_estorno_nunca_e_negativo(self):
+        import avulso
+        assert avulso.estorno(avulso.CAUCAO_BRL * 3) == 0.0
+
+    def test_token_de_cada_sessao_e_diferente(self):
+        import avulso
+        assert avulso.novo_dono() != avulso.novo_dono()
+
+    def test_dono_do_token_reconstroi_o_owner(self):
+        import avulso
+        dono = avulso.novo_dono()
+        assert avulso.dono_do_token(dono.split(":")[1]) == dono
+        assert avulso.eh_avulso(dono)
+
+    def test_owner_de_conta_normal_nao_e_avulso(self):
+        import avulso
+        assert not avulso.eh_avulso("amanda")
+        assert not avulso.eh_avulso("")
+
+    # -- rotas ------------------------------------------------------------
+
+    def test_totem_abre_sem_login(self, client_anonimo):
+        """A guarda de acesso não pode mandar o totem para a tela de login."""
+        assert client_anonimo.get("/totem").status_code == 200
+
+    def test_formulario_do_conector_abre_sem_login(self, client_anonimo):
+        resposta = client_anonimo.get("/totem/P2-C1")
+        assert resposta.status_code == 200
+        assert b"Placa" in resposta.data
+
+    def test_login_oferece_o_caminho_sem_cadastro(self, client_anonimo):
+        assert "sem cadastro" in client_anonimo.get("/login").get_data(as_text=True)
+
+    def test_conector_vip_recusado_para_quem_nao_tem_conta(self, client_anonimo):
+        """C5 é de assinante, e sessão avulsa não tem assinatura."""
+        resposta = client_anonimo.get("/totem/P1-C5", follow_redirects=True)
+        assert "exclusivo para assinantes" in resposta.get_data(as_text=True)
+
+    def test_conector_inexistente_volta_para_a_lista(self, client_anonimo):
+        resposta = client_anonimo.get("/totem/P9-C9", follow_redirects=True)
+        assert "não encontrado" in resposta.get_data(as_text=True)
+
+    def test_placa_invalida_nao_cria_sessao(self, client_anonimo):
+        resposta = client_anonimo.post(
+            "/totem/P2-C1", data={"placa": "XX", "metodo": "PIX"},
+            follow_redirects=True)
+        assert "inválida" in resposta.get_data(as_text=True)
+
+    def test_nexuscoin_recusado_sem_conta(self, client_anonimo):
+        """NexusCoin debita de uma carteira, e avulso não tem carteira."""
+        resposta = client_anonimo.post(
+            "/totem/P2-C1", data={"placa": "ABC1D23", "metodo": "NEXUSCOIN"},
+            follow_redirects=True)
+        assert "exige conta" in resposta.get_data(as_text=True)
+
+    def _liberar(self, cliente, charger_id="P2-C1", placa="ABC1D23"):
+        resposta = cliente.post(f"/totem/{charger_id}",
+                                data={"placa": placa, "metodo": "PIX"})
+        assert resposta.status_code == 302, resposta.get_data(as_text=True)[:400]
+        return resposta.headers["Location"].rsplit("/", 1)[-1]
+
+    def test_liberar_inicia_a_recarga_e_devolve_o_link(self, client_anonimo):
+        token = self._liberar(client_anonimo)
+        pagina = client_anonimo.get(f"/avulso/{token}").get_data(as_text=True)
+        assert "Recarregando" in pagina
+        assert "ABC1D23" in pagina
+
+    def test_sessao_avulsa_nao_recebe_cashback(self, client_anonimo, tmp_path):
+        """Cashback cai numa carteira NexusCoin, que a sessão avulsa não tem."""
+        token = self._liberar(client_anonimo)
+        client_anonimo.post(f"/avulso/{token}/encerrar")
+        import db
+        linha = db.query_one(
+            "SELECT cashback_nc, usuario FROM sessoes WHERE usuario LIKE 'avulso:%'")
+        assert linha is not None, "a sessão avulsa não foi arquivada"
+        assert linha["cashback_nc"] == 0.0
+
+    def test_encerrar_arquiva_com_a_placa_e_libera_o_conector(self, client_anonimo):
+        token = self._liberar(client_anonimo)
+        resposta = client_anonimo.post(f"/avulso/{token}/encerrar",
+                                       follow_redirects=True)
+        pagina = resposta.get_data(as_text=True)
+        assert "Recarga concluída" in pagina
+
+        import db
+        linha = db.query_one("SELECT * FROM sessoes WHERE usuario = 'avulso:ABC1D23'")
+        assert linha is not None
+        assert linha["metodo_pagto"] == "PIX"
+        assert linha["user_name"] == "Sem cadastro"
+
+        # O conector volta para a fila no mesmo passo: como a caução já estava
+        # retida, não há motivo para segurar a vaga esperando pagamento.
+        livre = client_anonimo.get("/totem").get_data(as_text=True)
+        assert "P2-C1" in livre or "/totem/P2-C1" in livre
+
+    def test_encerrar_duas_vezes_nao_arquiva_duas_linhas(self, client_anonimo):
+        token = self._liberar(client_anonimo)
+        client_anonimo.post(f"/avulso/{token}/encerrar")
+        client_anonimo.post(f"/avulso/{token}/encerrar", follow_redirects=True)
+        import db
+        linhas = db.query_all("SELECT session_id FROM sessoes WHERE usuario LIKE 'avulso:%'")
+        assert len(linhas) == 1
+
+    def test_token_desconhecido_nao_estoura(self, client_anonimo):
+        resposta = client_anonimo.get("/avulso/naoexiste", follow_redirects=True)
+        assert resposta.status_code == 200
+
+    def test_recibo_mostra_o_estorno(self, client_anonimo):
+        """
+        Uma recarga de segundos cai na taxa mínima, bem abaixo da caução —
+        então o estorno precisa aparecer na tela.
+        """
+        import avulso
+        token = self._liberar(client_anonimo)
+        client_anonimo.post(f"/avulso/{token}/encerrar")
+        pagina = client_anonimo.get(f"/avulso/{token}").get_data(as_text=True)
+        assert "Volta para você" in pagina
+        esperado = f"{avulso.estorno(2.00):.2f}".replace(".", ",")
+        assert esperado in pagina
+
+    def test_rotas_do_totem_estao_declaradas_publicas(self):
+        """
+        A guarda nega por padrão: rota nova nasce protegida. Se alguém renomear
+        um endpoint do totem e esquecer da lista, a modalidade quebra em
+        silêncio — pedindo login a quem veio justamente para não fazer login.
+        """
+        import app as app_module
+        for endpoint in ("totem_postos", "totem_liberar",
+                         "avulso_sessao", "avulso_encerrar"):
+            assert endpoint in app_module.ROTAS_PUBLICAS, endpoint
+            assert endpoint not in app_module.ROTAS_STAFF, endpoint

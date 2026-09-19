@@ -29,6 +29,7 @@ ele paga**.
 | **Encerrar e pagar** | Botão na tela do posto encerra a própria recarga e leva à tela de pagamento, com NexusCoin, Pix (QR simulado) e cartão salvo. |
 | **Menu de perfil** | Avatar no cabeçalho com nome, saldo, atalho de recarga e — para o operador — acesso ao painel. |
 | **Painel do operador** | Hub em `/admin` reunindo dashboard, relatório, log Modbus e testes, com indicadores ao vivo e exportação em CSV. |
+| **Recarga sem cadastro** | Quem não quer criar conta aponta a câmera para o QR do totem, informa a placa e autoriza uma caução de R$ 50,00. A caução abate o consumo no fim e a diferença é estornada — o mesmo mecanismo das redes públicas, sem senha e sem liberação manual. |
 | **Persistência** | SQLite (`sqlite3` da biblioteca padrão) guarda carteiras, extrato, reservas e histórico de sessões. |
 | **Estruturas de Dados** | Busca e ordenação implementadas à mão em `algoritmos.py`, **rodando em produção** (`get_session` e `rebalance`), com um segundo ponto de entrada em `menu.py` — menu de terminal sobre a mesma coleção de sessões. |
 | **Fundação de design** | Escala tipográfica, espaçamento, raios e movimento em tokens; contrastes corrigidos para WCAG AA nos dois temas; foco de teclado visível; `prefers-reduced-motion`. |
@@ -243,7 +244,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 ### Usuário
 | Método | Rota | Função |
 |---|---|---|
-| GET/POST | `/login` | Autenticação (única rota pública) |
+| GET/POST | `/login` | Autenticação |
 | GET | `/logout` | Encerra a sessão |
 | GET | `/` | Mapa de postos |
 | GET | `/posto/<id>` | Conectores do posto, com reserva e encerramento |
@@ -257,6 +258,17 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | GET | `/recibo/<id>` | Comprovante |
 | GET | `/carteira` | Saldo e extrato NexusCoin |
 | POST | `/carteira/recarregar` | Compra de NexusCoin |
+
+### Sem cadastro (rotas públicas, sem login)
+| Método | Rota | Função |
+|---|---|---|
+| GET | `/totem` | Conectores livres — o que o QR do totem abriria |
+| GET/POST | `/totem/<carregador>` | Placa, forma de pagamento e caução; libera o conector |
+| GET | `/avulso/<token>` | Acompanhamento da recarga e, depois, o recibo com o estorno |
+| POST | `/avulso/<token>/encerrar` | Encerra e acerta a caução na mesma operação |
+
+O token da URL é o que identifica a sessão: sem conta, é ele que faz o papel
+de credencial, e vale só para aquela recarga.
 
 ### Operador (staff)
 | Método | Rota | Função |
