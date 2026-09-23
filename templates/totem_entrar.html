@@ -1,0 +1,98 @@
+{% extends "totem_base.html" %}
+{% block title %}Entrar pelo celular — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.te-passos { display: grid; gap: var(--sp-3); counter-reset: passo; }
+.te-passos li { list-style: none; display: flex; gap: var(--sp-3); align-items: baseline;
+    font-size: var(--fs-lg); color: var(--cor-texto); }
+.te-passos li::before {
+    counter-increment: passo; content: counter(passo);
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: var(--fs-md); font-weight: var(--fw-bold);
+    background: var(--cor-superficie-2); border: 1px solid var(--cor-borda);
+}
+.te-aguardando { display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    font-size: var(--fs-md); color: var(--cor-texto-secundario); }
+.te-aguardando i { width: 10px; height: 10px; border-radius: 50%; background: var(--cor-livre);
+    animation: te-pulso 1.4s ease-in-out infinite; }
+@keyframes te-pulso { 50% { opacity: .25; } }
+.te-alternativa { text-align: center; font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
+.te-alternativa a { color: var(--cor-texto-secundario); text-underline-offset: 3px; }
+.te-expirado { text-align: center; }
+@media (prefers-reduced-motion: reduce) { .te-aguardando i { animation: none; } }
+{% endblock %}
+
+{% block totem %}
+<div>
+    <h1 class="tt-titulo">Entre pelo celular</h1>
+    <p class="tt-sub">A senha fica no seu celular. O totem só recebe a confirmação.</p>
+</div>
+
+<div class="tt-qr" id="qrBloco">{{ qr | safe }}</div>
+
+<ol class="te-passos" id="passos">
+    <li>Abra a câmera do celular</li>
+    <li>Aponte para o código acima</li>
+    <li>Confirme a entrada no celular</li>
+</ol>
+
+<div class="te-aguardando" id="aguardando" role="status">
+    <i aria-hidden="true"></i>
+    <span>Aguardando o celular · código válido por <span id="restante">{{ validade // 60 }}:{{ '%02d' | format(validade % 60) }}</span></span>
+</div>
+
+<div class="te-expirado" id="expirado" hidden>
+    <p class="tt-nota"><strong>O código expirou.</strong> Gere um novo para tentar de novo.</p>
+</div>
+
+<p class="te-alternativa">
+    Celular sem acesso a esta rede?
+    <a href="{{ url_celular_local }}" target="_blank" rel="noopener">Abrir a confirmação em outra aba</a>
+</p>
+
+<div class="tt-acoes">
+    <a class="tt-btn secundario" id="novoCodigo" href="{{ url_for('totem_entrar') }}" hidden>Gerar novo código</a>
+    <a class="tt-btn discreto" href="{{ url_for('totem_home') }}">Cancelar</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    var url = '{{ url_for("totem_entrar_estado", token=token) }}';
+    var restante = {{ validade }};
+    var rotulo = document.getElementById('restante');
+    var ativo = true;
+
+    function expirar() {
+        ativo = false;
+        document.getElementById('aguardando').hidden = true;
+        document.getElementById('passos').hidden = true;
+        document.getElementById('qrBloco').style.opacity = '.15';
+        document.getElementById('expirado').hidden = false;
+        document.getElementById('novoCodigo').hidden = false;
+    }
+
+    setInterval(function () {
+        if (!ativo) return;
+        restante = Math.max(0, restante - 1);
+        rotulo.textContent = Math.floor(restante / 60) + ':' + String(restante % 60).padStart(2, '0');
+        if (restante === 0) expirar();
+    }, 1000);
+
+    (function perguntar() {
+        if (!ativo) return;
+        fetch(url, {cache: 'no-store'})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.pronto) { window.location.href = d.url; return; }
+                if (d.expirado) { expirar(); return; }
+                setTimeout(perguntar, 1500);
+            })
+            .catch(function () { setTimeout(perguntar, 3000); });
+    })();
+})();
+</script>
+{% endblock %}

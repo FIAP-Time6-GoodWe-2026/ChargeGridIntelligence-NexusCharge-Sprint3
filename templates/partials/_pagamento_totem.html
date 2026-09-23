@@ -1,0 +1,162 @@
+{# =============================================================================
+   Sequência de pagamento do totem: aproximação do cartão, Pix e NexusCoin.
+
+   O totem não tem teclado para número de cartão, nem faria sentido ter: o
+   cartão é físico, por aproximação no leitor. Esta camada simula o leitor e
+   a confirmação do Pix, e só então envia o formulário — é o momento em que o
+   pagamento de verdade aconteceria.
+
+   Uso:  {% include 'partials/_pagamento_totem.html' %}
+         form com  data-pagamento-totem  e um input[name=metodo] marcado.
+         `qr_pix` no contexto para mostrar o QR do Pix.
+   ============================================================================= #}
+<style>
+.pg-camada {
+    position: fixed; inset: 0; z-index: 1000;
+    display: none; align-items: center; justify-content: center;
+    padding: var(--sp-5);
+    background: rgba(2, 6, 23, .72);
+}
+.pg-camada.aberta { display: flex; }
+.pg-cartao {
+    width: min(100%, 34rem);
+    background: var(--cor-card); color: var(--cor-texto);
+    border-radius: 1.5rem;
+    padding: var(--sp-7) var(--sp-6) var(--sp-6);
+    text-align: center;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .45);
+}
+.pg-icone { width: 9rem; height: 9rem; margin: 0 auto var(--sp-5); position: relative; }
+.pg-icone svg { width: 100%; height: 100%; display: block; }
+.pg-titulo { font-size: 2.25rem; font-weight: var(--fw-bold); line-height: var(--lh-tight); }
+.pg-sub { font-size: var(--fs-lg); color: var(--cor-texto-secundario); margin-top: var(--sp-2); }
+.pg-valor { font-size: 3.25rem; font-weight: var(--fw-bold); margin-top: var(--sp-4);
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.pg-barra { height: 6px; border-radius: 3px; background: var(--cor-borda);
+    overflow: hidden; margin: var(--sp-5) auto 0; max-width: 16rem; }
+.pg-barra i { display: block; height: 100%; width: 40%; border-radius: 3px;
+    background: var(--cor-primaria); animation: pg-vai 1.1s var(--ease) infinite; }
+@keyframes pg-vai { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.pg-qr { background: #fff; border-radius: var(--r-lg); padding: var(--sp-3);
+    width: 18rem; aspect-ratio: 1; margin: 0 auto var(--sp-4); }
+.pg-qr svg { width: 100%; height: 100%; display: block; }
+
+/* Cartão se aproximando do leitor */
+.pg-leitor { stroke: var(--cor-texto-secundario); fill: none; stroke-width: 2.5; }
+.pg-ondas path { stroke: var(--cor-primaria); fill: none; stroke-width: 3; stroke-linecap: round;
+    opacity: 0; animation: pg-onda 1.6s ease-out infinite; }
+.pg-ondas path:nth-child(2) { animation-delay: .25s; }
+.pg-ondas path:nth-child(3) { animation-delay: .5s; }
+@keyframes pg-onda { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+.pg-plastico { animation: pg-aproxima 1.6s var(--ease) infinite alternate; transform-origin: center; }
+@keyframes pg-aproxima { from { transform: translate(18px, -14px) rotate(-8deg); }
+                         to   { transform: translate(0, 0) rotate(0); } }
+
+.pg-ok circle { fill: var(--cor-livre); }
+.pg-ok path { stroke: #fff; stroke-width: 8; fill: none; stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 80; stroke-dashoffset: 80; animation: pg-traco .42s var(--ease) .1s forwards; }
+@keyframes pg-traco { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .pg-ondas path, .pg-plastico, .pg-barra i { animation: none; opacity: 1; }
+    .pg-ok path { animation: none; stroke-dashoffset: 0; }
+}
+</style>
+
+<div class="pg-camada" id="pgCamada" role="dialog" aria-modal="true" aria-live="assertive"
+     aria-labelledby="pgTitulo">
+    <div class="pg-cartao">
+        <div class="pg-icone" id="pgIcone" aria-hidden="true"></div>
+        <div class="pg-qr" id="pgQr" hidden>{{ qr_pix | safe if qr_pix else '' }}</div>
+        <div class="pg-titulo" id="pgTitulo">Aproxime o cartão</div>
+        <div class="pg-sub" id="pgSub">Encoste o cartão ou o celular no leitor abaixo da tela.</div>
+        <div class="pg-valor" id="pgValor"></div>
+        <div class="pg-barra" id="pgBarra" hidden><i></i></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var reduzido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var ms = function (t) { return reduzido ? Math.min(t, 500) : t; };
+
+    var ICONES = {
+        cartao:
+            '<svg viewBox="0 0 132 132">' +
+            '<rect class="pg-leitor" x="26" y="70" width="80" height="50" rx="8"/>' +
+            '<g class="pg-ondas">' +
+            '<path d="M58 60 q8 -8 16 0"/><path d="M52 52 q14 -14 28 0"/><path d="M46 44 q20 -20 40 0"/>' +
+            '</g>' +
+            '<g class="pg-plastico">' +
+            '<rect x="40" y="6" width="62" height="40" rx="6" fill="var(--cor-primaria)"/>' +
+            '<rect x="48" y="16" width="14" height="10" rx="2" fill="#FCD34D"/>' +
+            '<rect x="48" y="33" width="36" height="4" rx="2" fill="rgba(255,255,255,.7)"/>' +
+            '</g></svg>',
+        espera:
+            '<svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="50" fill="none" ' +
+            'stroke="var(--cor-borda)" stroke-width="8"/>' +
+            '<path d="M66 16 a50 50 0 0 1 50 50" fill="none" stroke="var(--cor-primaria)" ' +
+            'stroke-width="8" stroke-linecap="round">' +
+            (reduzido ? '' : '<animateTransform attributeName="transform" type="rotate" ' +
+            'from="0 66 66" to="360 66 66" dur="0.9s" repeatCount="indefinite"/>') +
+            '</path></svg>',
+        ok:
+            '<svg class="pg-ok" viewBox="0 0 132 132"><circle cx="66" cy="66" r="58"/>' +
+            '<path d="M40 68 l18 18 l36 -38"/></svg>'
+    };
+
+    var camada = document.getElementById('pgCamada');
+    var icone = document.getElementById('pgIcone');
+    var qr = document.getElementById('pgQr');
+    var titulo = document.getElementById('pgTitulo');
+    var sub = document.getElementById('pgSub');
+    var valor = document.getElementById('pgValor');
+    var barra = document.getElementById('pgBarra');
+
+    function passo(p) {
+        icone.hidden = !p.icone;
+        if (p.icone) icone.innerHTML = ICONES[p.icone];
+        qr.hidden = !p.qr;
+        titulo.textContent = p.titulo;
+        sub.textContent = p.sub || '';
+        barra.hidden = !p.barra;
+    }
+
+    function roteiro(metodo) {
+        if (metodo === 'CARTAO') return [
+            [{icone: 'cartao', titulo: 'Aproxime o cartão',
+              sub: 'Encoste o cartão ou o celular no leitor abaixo da tela.'}, 2400],
+            [{icone: 'espera', titulo: 'Processando…', sub: 'Não retire o cartão.', barra: false}, 1700],
+            [{icone: 'ok', titulo: 'Transação aprovada', sub: 'Pode retirar o cartão.'}, 1300]
+        ];
+        if (metodo === 'PIX') return [
+            [{qr: true, titulo: 'Pague com Pix',
+              sub: 'Abra o app do seu banco e leia o código.', barra: true}, 4200],
+            [{icone: 'ok', titulo: 'Pagamento recebido', sub: 'Confirmado pelo banco.'}, 1300]
+        ];
+        return [
+            [{icone: 'espera', titulo: 'Processando…', sub: 'Debitando da sua carteira NexusCoin.'}, 1200],
+            [{icone: 'ok', titulo: 'Pagamento aprovado', sub: 'O cashback já entrou na sua carteira.'}, 1300]
+        ];
+    }
+
+    document.querySelectorAll('form[data-pagamento-totem]').forEach(function (form) {
+        form.addEventListener('submit', function (evento) {
+            if (form.dataset.enviando) return;
+            evento.preventDefault();
+            var marcado = form.querySelector('input[name="metodo"]:checked');
+            if (!marcado) return;
+            form.dataset.enviando = '1';
+            valor.textContent = form.dataset.valor || '';
+            camada.classList.add('aberta');
+            var passos = roteiro(marcado.value), i = 0;
+            (function proximo() {
+                if (i >= passos.length) { form.submit(); return; }
+                passo(passos[i][0]);
+                setTimeout(proximo, ms(passos[i++][1]));
+            })();
+        });
+    });
+})();
+</script>

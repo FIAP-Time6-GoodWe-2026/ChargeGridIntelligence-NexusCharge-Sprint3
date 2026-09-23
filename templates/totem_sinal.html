@@ -1,0 +1,51 @@
+{% extends "totem_base.html" %}
+{% block title %}Pagar sinal — NexusCharge{% endblock %}
+
+{% block totem %}
+<div>
+    <h1 class="tt-titulo">Como você quer pagar o sinal?</h1>
+    <p class="tt-sub">Carro <span class="tt-placa">{{ placa[:3] }}-{{ placa[3:] }}</span> · o conector libera assim que o pagamento for aprovado.</p>
+</div>
+
+<form method="POST" action="{{ url_for('totem_sinal') }}" data-pagamento-totem
+      data-valor="R$ {{ caucao | brl }}" style="display:contents">
+    <div class="tt-opcoes" role="radiogroup" aria-label="Forma de pagamento">
+        <label class="tt-opcao">
+            <input type="radio" name="metodo" value="CARTAO" checked>
+            <span class="tt-opcao-icone" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                </svg>
+            </span>
+            <span class="tt-opcao-info">
+                <strong>Cartão por aproximação</strong>
+                <span>Crédito ou débito, no leitor do totem</span>
+            </span>
+        </label>
+        <label class="tt-opcao">
+            <input type="radio" name="metodo" value="PIX">
+            <span class="tt-opcao-icone" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"/>
+                </svg>
+            </span>
+            <span class="tt-opcao-info">
+                <strong>Pix</strong>
+                <span>QR Code na tela</span>
+            </span>
+        </label>
+    </div>
+
+    <div class="tt-painel">
+        <div class="tt-linha total"><span>Sinal</span><strong>R$ {{ caucao | brl }}</strong></div>
+    </div>
+
+    <div class="tt-acoes">
+        <button type="submit" class="tt-btn primario">Pagar R$ {{ caucao | brl }}</button>
+        <a class="tt-btn discreto" href="{{ url_for('totem_sem_conta') }}">Voltar</a>
+    </div>
+</form>
+
+{% include 'partials/_pagamento_totem.html' %}
+{% endblock %}

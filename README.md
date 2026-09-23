@@ -23,13 +23,16 @@ ele paga**.
 
 | Novidade | O que é |
 |---|---|
-| **Autenticação** | Quatro contas pré-cadastradas; ninguém chega ao mapa sem entrar. Rotas administrativas restritas ao operador. |
+| **Autenticação e Perfis** | Cinco contas pré-cadastradas (incluindo Luiz Otávio com cartão salvo); ninguém chega ao mapa sem entrar no Modo App. Rotas administrativas restritas ao operador. |
+| **Modo App / Modo Totem** | Alternância com um clique entre experiência mobile para o motorista e interface vertical para totens físicos de autoatendimento touchscreen. |
+| **Gestão de Veículos** | Suporte a múltiplos veículos por conta, cadastro de veículos avulsos e bloqueio estrito contra recargas simultâneas para a mesma placa. |
+| **Totem com Pareamento** | Login no totem via QR Code dinâmico (ISO/IEC 18004 na stdlib) lido pelo smartphone, liberando o conector sem digitação de senha pública. |
+| **Recarga sem cadastro (Totem)** | Visitante sem conta informa a placa no totem e autoriza um sinal de R$ 50,00 via Pix. O conector é liberado na hora; no término, o sinal abate o consumo e o excedente é estornado automaticamente. |
 | **NexusCoin** | Moeda interna com paridade 1 NC = R$ 1,00, **10% de cashback** ao pagar a recarga com ela, extrato auditável e recarga por Pix ou cartão. |
 | **Reserva com sinal** | Bloqueia um conector por 15 minutos cobrando R$ 10,00. Compareceu, o sinal vira crédito; não compareceu, vira taxa por bloqueio; cancelou no prazo, estorno integral. |
 | **Encerrar e pagar** | Botão na tela do posto encerra a própria recarga e leva à tela de pagamento, com NexusCoin, Pix (QR simulado) e cartão salvo. |
 | **Menu de perfil** | Avatar no cabeçalho com nome, saldo, atalho de recarga e — para o operador — acesso ao painel. |
 | **Painel do operador** | Hub em `/admin` reunindo dashboard, relatório, log Modbus e testes, com indicadores ao vivo e exportação em CSV. |
-| **Recarga sem cadastro** | Quem não quer criar conta aponta a câmera para o QR do totem, informa a placa e autoriza uma caução de R$ 50,00. A caução abate o consumo no fim e a diferença é estornada — o mesmo mecanismo das redes públicas, sem senha e sem liberação manual. |
 | **Persistência** | SQLite (`sqlite3` da biblioteca padrão) guarda carteiras, extrato, reservas e histórico de sessões. |
 | **Estruturas de Dados** | Busca e ordenação implementadas à mão em `algoritmos.py`, **rodando em produção** (`get_session` e `rebalance`), com um segundo ponto de entrada em `menu.py` — menu de terminal sobre a mesma coleção de sessões. |
 | **Fundação de design** | Escala tipográfica, espaçamento, raios e movimento em tokens; contrastes corrigidos para WCAG AA nos dois temas; foco de teclado visível; `prefers-reduced-motion`. |
@@ -63,7 +66,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 189 testes
+pytest -q          # 237 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -80,6 +83,7 @@ saldos, para não ser preciso procurar a senha no meio de uma apresentação:
 ║   amanda  assinante        100,00 NC                     ║
 ║   allan   corporativo        5,00 NC                     ║
 ║   jose    padrão             0,00 NC                     ║
+║   luiz    assinante         50,00 NC                     ║
 ║   mylon   operador      10.000,00 NC                     ║
 ╚═══════════════════════════════════════════════════════════╝
 ```
@@ -98,33 +102,45 @@ do operador.
 
 Senha de todas: **`1234`**. Cada conta demonstra um caminho diferente do produto.
 
-| Usuário | Nome | Categoria | Saldo inicial | Para que serve na demonstração |
-|---|---|---|---:|---|
-| `amanda` | Amanda Ribeiro | Assinante (−15%) | 100,00 NC | Caminho feliz: já chega com uma recarga em andamento, encerra, paga com NexusCoin e recebe cashback |
-| `allan` | Allan Souza | Corporativo (−10%) | 5,00 NC | Saldo insuficiente: bloqueio da reserva, recarga da carteira e retomada do pagamento |
-| `jose` | José Fino | Padrão | 0,00 NC | Carteira zerada: estado vazio do extrato, tarifa cheia e pagamento por Pix ou cartão |
-| `mylon` | Mylon Freixo | Operador | 10.000,00 NC | Painel, throttle ao vivo, log Modbus, testes e exportação |
+| Usuário | Nome | Categoria | Saldo inicial | Veículos | Para que serve na demonstração |
+|---|---|---|---:|---|---|
+| `amanda` | Amanda Ribeiro | Assinante (−15%) | 100,00 NC | `AMA1A11`, `RIO4F22` | Caminho feliz no Modo App: inicia com recarga em andamento no conector C4 da Paulista (`AMA1A11`), encerra, paga com NexusCoin, recebe 10% de cashback e inicia nova recarga com seu segundo carro (`RIO4F22`) |
+| `allan` | Allan Souza | Corporativo (−10%) | 5,00 NC | `ALL2C33` | Saldo insuficiente: bloqueio da reserva, recarga da carteira e retomada do pagamento |
+| `jose` | José Fino | Padrão | 0,00 NC | `JOS3D44` | Carteira zerada: estado vazio do extrato, tarifa cheia e pagamento por Pix ou cartão |
+| `luiz` | Luiz Otávio | Assinante (−15%) | 50,00 NC | `LUZ9B87` | Cartão salvo (Visa final 4821); demonstração do pareamento celular-totem via QR Code e recarga no totem físico |
+| `mylon` | Mylon Freixo | Operador | 10.000,00 NC | `ADM0X00` | Painel administrativo (`/admin`), controle de demanda/throttle ao vivo, log Modbus, suíte de testes e exportação CSV |
 
 Na tela de login, clicar em uma conta preenche e envia o formulário.
 
+> **Regra de integridade veicular:** cada conta pode possuir múltiplos carros cadastrados e adicionar novos veículos avulsos no formulário de recarga (com opção de salvar para futuras recargas ou carregar o carro de um terceiro). Por integridade física e operacional do sistema, **um mesmo veículo não pode ter duas recargas ativas simultaneamente**, sendo bloqueado com mensagem amigável caso tente nova sessão enquanto a anterior não for paga e liberada.
+
 ---
 
-## 🧭 Roteiro de demonstração (≈ 4 min)
+## 🧭 Roteiro de demonstração (≈ 4–5 min)
 
-1. **Entrar como `amanda`** → o mapa mostra os três postos, com Berrini lotado
-   e Paulista em throttle.
-2. **Abrir o posto Paulista (P1)** → Amanda encontra a **própria recarga em
-   andamento** no conector C4.
-3. **Reservar o conector C5** → modal com os termos, R$ 10,00 debitados,
-   countdown de 15 minutos. Dar F5: o countdown **retoma de onde estava**.
-4. **Encerrar a recarga do C4** → tela de pagamento com energia medida, tarifa
-   fixada na conexão e total.
-5. **Pagar com NexusCoin** → saldo cai, cashback de 10% entra, recibo com o
-   valor contando de zero até o crédito.
-6. **Entrar como `allan`** (5 NC) → tentar reservar: bloqueio com aviso de
-   quanto falta e atalho para a carteira. Recarregar e concluir.
-7. **Entrar como `mylon`** → painel do operador: potência por posto, throttle
-   ao vivo, frames Modbus, reservas ativas e sinais retidos.
+### Parte 1 — Modo App (Motorista logado no smartphone)
+1. **Entrar como `amanda`** → a tela inicial do Modo App vai direto ao mapa interativo com os três postos (Berrini lotado, Paulista em throttle).
+2. **Abrir o posto Paulista (P1)** → Amanda encontra a **própria recarga em andamento** no conector C4 (`AMA1A11`).
+3. **Reservar o conector C5** → modal com os termos, R$ 10,00 de sinal debitados da carteira, countdown de 15 minutos em tempo real. Dar F5: o countdown **retoma de onde estava**.
+4. **Encerrar a recarga do C4** → tela de pagamento com energia medida em tempo real, tarifa fixada na conexão e detalhamento de consumo.
+5. **Pagar com NexusCoin** → saldo debitado com precisão, crédito instantâneo de **10% de cashback**, e recibo com contador animado do crédito.
+6. **Nova recarga com segundo carro** → Amanda seleciona o conector livre e escolhe seu segundo veículo cadastrado (`RIO4F22`), demonstrando a flexibilidade da garagem multi-veículo.
+7. **Entrar como `allan`** (5 NC) → tentar reservar conector: bloqueio por saldo insuficiente com aviso de valor faltante e atalho para recarga da carteira.
+
+### Parte 2 — Modo Totem (Terminal de autoatendimento no posto)
+8. **Alternar para Modo Totem** (botão no topo ou `/modo/totem`) → interface vertical touchscreen específica para terminais físicos de recarga.
+9. **Fluxo com Conta (Pareamento via QR Code)**:
+   - Clicar em "Entrar com QR Code". O totem gera um QR dinâmico de pareamento (ISO/IEC 18004).
+   - Simular leitura pelo smartphone (`/celular/parear/<token>`) autenticado como `luiz`.
+   - O totem reconhece o pareamento instantaneamente via polling reativo, exibe as boas-vindas a Luiz Otávio, permite escolher o conector e o carro cadastrado (`LUZ9B87`), iniciando a recarga sem expor senhas na tela pública.
+10. **Fluxo sem Conta / Visitante (Sinal via Pix)**:
+    - No totem, selecionar "Carregar sem conta".
+    - Informar a placa visitante e o conector desejado.
+    - O totem gera um Pix para autorização do sinal de R$ 50,00.
+    - Ao confirmar, o conector é liberado imediatamente. Ao encerrar a recarga, o sinal abate o valor consumido e o saldo restante é estornado automaticamente na mesma operação.
+
+### Parte 3 — Painel do Operador
+11. **Entrar como `mylon`** → acessar `/admin`: visão panorâmica de potência dos postos, monitoramento de throttle ao vivo no `/dashboard`, auditoria de tráfego de frames industriais no `/modbus-log`, execução da suíte no `/testes` e exportação do histórico em `/admin/export.csv`.
 
 ---
 
@@ -158,9 +174,9 @@ qr.py                   QR Code simulado em SVG (Pix)
    ↑
 app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
-templates/              14 telas + partial de cabeçalho
+templates/              26 telas e parciais (Modo App e Modo Totem)
 static/                 favicon
-test_chargegrid.py      189 testes automatizados
+test_chargegrid.py      237 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -241,49 +257,56 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 
 ## 🗺️ Rotas
 
-### Usuário
+### Modo App / Usuário (Mobile)
 | Método | Rota | Função |
 |---|---|---|
-| GET/POST | `/login` | Autenticação |
-| GET | `/logout` | Encerra a sessão |
-| GET | `/` | Mapa de postos |
+| GET/POST | `/login` | Autenticação e seleção de conta de demonstração |
+| GET | `/logout` | Encerra a sessão de login |
+| GET | `/modo/<modo>` | Alterna entre Modo App e Modo Totem |
+| GET | `/` | Mapa de postos interativo |
 | GET | `/posto/<id>` | Conectores do posto, com reserva e encerramento |
-| GET | `/posto/<id>/carregador/<id>` | Formulário de nova sessão |
+| GET | `/posto/<id>/carregador/<id>` | Formulário de recarga com seleção/cadastro de veículos |
 | POST | `/sessao` | Cria a sessão de recarga |
-| POST | `/api/reservar` | Reserva um conector (débito do sinal) |
-| POST | `/api/reserva/cancelar` | Cancela e estorna |
-| POST | `/sessao/<id>/encerrar` | Encerra a própria recarga (o conector fica retido até o pagamento) |
-| GET | `/pagamento/<id>` | Tela de pagamento |
-| POST | `/pagamento/<id>/confirmar` | Efetiva o pagamento |
-| GET | `/recibo/<id>` | Comprovante |
-| GET | `/carteira` | Saldo e extrato NexusCoin |
-| POST | `/carteira/recarregar` | Compra de NexusCoin |
+| POST | `/api/reservar` | Reserva conector com débito de sinal (R$ 10,00) |
+| POST | `/api/reserva/cancelar` | Cancela reserva e estorna sinal integralmente |
+| POST | `/sessao/<id>/encerrar` | Encerra recarga (conector retido até confirmação de pagamento) |
+| GET | `/pagamento/<id>` | Tela de pagamento (NexusCoin, Pix, Cartão salvo) |
+| POST | `/pagamento/<id>/confirmar` | Efetiva pagamento, libera o conector e credita cashback |
+| GET | `/recibo/<id>` | Comprovante com contagem dinâmica de cashback e exportação |
+| GET | `/carteira` | Saldo, extrato auditável e recarga NexusCoin |
+| POST | `/carteira/recarregar` | Compra de créditos NexusCoin via Pix ou cartão |
 
-### Sem cadastro (rotas públicas, sem login)
+### Modo Totem / Autoatendimento (Tela touch vertical do totem físico)
 | Método | Rota | Função |
 |---|---|---|
-| GET | `/totem` | Conectores livres — o que o QR do totem abriria |
-| GET/POST | `/totem/<carregador>` | Placa, forma de pagamento e caução; libera o conector |
-| GET | `/avulso/<token>` | Acompanhamento da recarga e, depois, o recibo com o estorno |
-| POST | `/avulso/<token>/encerrar` | Encerra e acerta a caução na mesma operação |
+| GET | `/totem` | Tela inicial do totem físico com status dos conectores locais |
+| GET/POST | `/totem/configurar` | Configuração inicial do posto associado ao hardware do totem |
+| GET | `/totem/entrar` | Exibe QR Code dinâmico para pareamento com smartphone |
+| GET | `/totem/entrar/<token>/estado` | Polling de verificação de pareamento consumido pelo totem |
+| GET/POST | `/celular/parear/<token>` | Rota mobile de confirmação de pareamento do usuário com o totem |
+| GET/POST | `/totem/veiculo` | Seleção de conector e veículo cadastrado na tela do totem |
+| GET/POST | `/totem/sem-conta` | Identificação por placa e conector para visitante sem cadastro |
+| GET/POST | `/totem/sem-conta/pagar` | Autorização de sinal de R$ 50,00 via Pix para liberação |
+| GET | `/totem/carregando` | Monitoramento vertical da recarga em andamento no conector do totem |
+| POST | `/totem/encerrar` | Encerra recarga diretamente na tela do totem |
+| GET | `/totem/recibo/<id>` | Recibo do totem com acerto de consumo e estorno do saldo de sinal |
+| POST | `/totem/sair` | Desconecta a conta pareada do totem e retorna ao estado inicial |
+| GET | `/avulso/<token>` | Acompanhamento mobile da recarga avulsa de visitante |
 
-O token da URL é o que identifica a sessão: sem conta, é ele que faz o papel
-de credencial, e vale só para aquela recarga.
-
-### Operador (staff)
+### Operador (Staff)
 | Método | Rota | Função |
 |---|---|---|
-| GET | `/admin` | Hub do painel |
-| GET | `/dashboard` | Potência, sessões e tarifas em tempo real |
-| POST | `/dashboard/nova-sessao` | Cria sessão pelo painel |
-| POST | `/dashboard/encerrar` | Encerra sessão pelo painel |
-| GET | `/relatorio` | Relatório consolidado |
-| GET | `/modbus-log` | Frames Modbus TCP |
-| GET | `/testes` · POST `/api/testes/run` | Suíte de testes no navegador |
+| GET | `/admin` | Hub central do operador |
+| GET | `/dashboard` | Painel de potência, ocupação e sessões ativas ao vivo |
+| POST | `/dashboard/nova-sessao` | Criação de sessão manual pelo operador |
+| POST | `/dashboard/encerrar` | Encerramento de sessão pelo painel |
+| GET | `/relatorio` | Relatório gerencial e financeiro consolidado |
+| GET | `/modbus-log` | Log de tráfego de frames industriais Modbus TCP |
+| GET | `/testes` · POST `/api/testes/run` | Suíte completa de testes executável no navegador |
 | GET | `/admin/export.csv` | Histórico de sessões em CSV |
-| POST | `/sessao/<id>/liberar` | Libera conector de recarga encerrada e não paga |
-| POST | `/admin/demo-reset` | Restaura o estado de demonstração |
-| GET | `/api/status` | JSON de polling (5 s) |
+| POST | `/sessao/<id>/liberar` | Desbloqueio forçado de conector retido |
+| POST | `/admin/demo-reset` | Restauração completa do estado de demonstração |
+| GET | `/api/status` | Polling JSON (5 s) de telemetria e potência dos postos |
 
 ---
 
@@ -293,7 +316,7 @@ de credencial, e vale só para aquela recarga.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**189 testes** em 24 classes. A suíte roda contra um banco temporário por teste,
+**237 testes** em 29 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -301,10 +324,14 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | PricingEngine | Os três eixos de tarifa e as fronteiras de horário |
 | PowerManager · Alocação / Rebalance | Limites, throttle, recusa física e prioridade |
 | SessionManager | Energia em tempo real, idempotência, taxa mínima |
-| Flask Routes | Todas as rotas, incluindo posto lotado |
+| Flask Routes | Todas as rotas, incluindo posto lotado e fluxos de erro |
 | Regressão e Auditoria | Não-reincidência dos bugs corrigidos |
 | Conector VIP | Exclusividade do conector C5 |
 | **Autenticação** | Guarda de acesso, staff × usuário, open redirect |
+| **Modo App e Modo Totem** | Alternância de modos, isolamento de rotas e consistência de sessão |
+| **Veículos e Integridade** | Múltiplos carros por conta, placa única ativa e cadastro avulso |
+| **Totem com Conta** | Pareamento via QR Code, ciclo de vida do token e sessão remota |
+| **Totem sem Conta** | Sinal de R$ 50,00 via Pix, liberação sem senha, acerto e estorno |
 | **Carteira** | Saldos iniciais, débito/crédito, saldo insuficiente, extrato |
 | **Reserva** | Débito do sinal, unicidade, cancelamento, expiração |
 | **Billing** | Abatimento do sinal, teto do abatimento, cashback |

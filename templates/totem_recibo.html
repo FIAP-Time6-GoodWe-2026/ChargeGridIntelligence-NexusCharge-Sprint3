@@ -1,0 +1,128 @@
+{% extends "totem_base.html" %}
+{% block title %}Recarga concluída — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.tb-topo { text-align: center; padding-top: var(--sp-4); }
+.tb-topo svg { width: 96px; height: 96px; margin: 0 auto var(--sp-4); display: block; }
+.tb-ok circle { fill: var(--cor-livre); }
+.tb-ok path { stroke: #fff; stroke-width: 7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tb-devolve { text-align: center; border-color: var(--cor-livre); }
+.tb-devolve span { display: block; font-size: var(--fs-md); color: var(--cor-texto-secundario); }
+.tb-devolve strong { display: block; font-size: 2.5rem; font-weight: var(--fw-bold);
+    color: var(--cor-livre-texto); font-variant-numeric: tabular-nums; margin-top: var(--sp-1); }
+.tb-celular { display: flex; align-items: center; gap: var(--sp-5); }
+.tb-celular .tt-qr { margin: 0; flex-shrink: 0; }
+.tb-fecha { text-align: center; font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
+
+/* ── Comprovante impresso: bobina térmica de 80 mm ─────────────────────── */
+.cupom { display: none; }
+@media print {
+    @page { size: 80mm auto; margin: 4mm; }
+    body * { visibility: hidden !important; }
+    .cupom, .cupom * { visibility: visible !important; }
+    .cupom {
+        display: block; position: absolute; inset: 0 auto auto 0; width: 72mm;
+        font-family: ui-monospace, "Courier New", monospace; font-size: 9pt;
+        color: #000; background: #fff; line-height: 1.35;
+    }
+    .cupom h2 { font-size: 11pt; text-align: center; margin: 0 0 2mm; }
+    .cupom .centro { text-align: center; }
+    .cupom hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+    .cupom .l { display: flex; justify-content: space-between; gap: 2mm; }
+    .cupom .forte { font-weight: 700; font-size: 10pt; }
+}
+{% endblock %}
+
+{% block totem %}
+<div class="tb-topo">
+    <svg class="tb-ok" viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="46"/><path d="M28 50 l14 14 l26 -30"/></svg>
+    <h1 class="tt-titulo">Recarga concluída</h1>
+    <p class="tt-sub" style="margin-inline:auto">Pode desconectar o cabo. Obrigado por carregar com a NexusCharge.</p>
+</div>
+
+<div class="tt-painel">
+    <div class="tt-linha"><span>Carro</span><strong class="tt-placa">{{ r.vehicle_id[:3] }}-{{ r.vehicle_id[3:] }}</strong></div>
+    <div class="tt-linha"><span>Energia</span><strong>{{ r.energia_kwh | brl(3) }} kWh</strong></div>
+    <div class="tt-linha"><span>Tempo</span><strong>{{ r.duracao_min | brl(0) }} min</strong></div>
+    <div class="tt-linha"><span>Consumo</span><strong>R$ {{ r.custo_brl | brl }}</strong></div>
+    {% if eh_avulso %}
+    <div class="tt-linha"><span>Sinal retido</span><strong>R$ {{ caucao | brl }}</strong></div>
+    {% endif %}
+    <div class="tt-linha"><span>Forma de pagamento</span><strong>{{ metodo_label }}</strong></div>
+    {% if r.cashback_nc > 0 %}
+    <div class="tt-linha"><span>Cashback</span><strong>+ {{ r.cashback_nc | brl }} NC</strong></div>
+    {% endif %}
+</div>
+
+{% if eh_avulso %}
+<div class="tt-painel tb-devolve">
+    <span>{% if estorno > 0 %}Volta para você{% else %}Consumo acima do sinal{% endif %}</span>
+    <strong>R$ {% if estorno > 0 %}{{ estorno | brl }}{% else %}{{ (r.custo_brl - caucao) | brl }}{% endif %}</strong>
+    <span>{% if estorno > 0 %}Estornado na mesma forma de pagamento.{% else %}Cobrado na mesma forma de pagamento.{% endif %}</span>
+</div>
+{% if qr_celular %}
+<div class="tb-celular tt-painel">
+    <div class="tt-qr pequeno">{{ qr_celular | safe }}</div>
+    <p class="tt-nota"><strong>Comprovante no celular.</strong> Leia o código para guardar o recibo com a devolução do sinal.</p>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="tt-acoes">
+    <button type="button" class="tt-btn secundario" onclick="window.print()">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        Imprimir comprovante
+    </button>
+    <form method="POST" action="{{ url_for('totem_sair') }}" id="formConcluir">
+        <button type="submit" class="tt-btn primario">Concluir</button>
+    </form>
+    <p class="tb-fecha" role="status">Esta tela fecha sozinha em <span id="fecha">60</span> s</p>
+</div>
+
+{# Comprovante para a impressora térmica do totem. Não é nota fiscal: o
+   sistema não emite NF-e, e o papel não pode dizer que é. #}
+<div class="cupom" aria-hidden="true">
+    <h2>NEXUSCHARGE</h2>
+    <div class="centro">ChargeGrid Intelligence<br>{{ postos_nomes[r.station_id] }} · {{ r.charger_id }}</div>
+    <hr>
+    <div class="centro forte">COMPROVANTE DE RECARGA</div>
+    <div class="centro">Não é documento fiscal</div>
+    <hr>
+    <div class="l"><span>Sessão</span><span>{{ r.session_id }}</span></div>
+    <div class="l"><span>Início</span><span>{{ r.inicio | datahora_br }}</span></div>
+    <div class="l"><span>Fim</span><span>{{ r.fim | datahora_br }}</span></div>
+    <div class="l"><span>Carro</span><span>{{ r.vehicle_id }}</span></div>
+    <hr>
+    <div class="l"><span>Energia</span><span>{{ r.energia_kwh | brl(3) }} kWh</span></div>
+    <div class="l"><span>Tarifa</span><span>R$ {{ r.tarifa_kwh | brl(4) }}/kWh</span></div>
+    <div class="l"><span>Tempo</span><span>{{ r.duracao_min | brl(0) }} min</span></div>
+    <hr>
+    <div class="l forte"><span>CONSUMO</span><span>R$ {{ r.custo_brl | brl }}</span></div>
+    {% if eh_avulso %}
+    <div class="l"><span>Sinal</span><span>R$ {{ caucao | brl }}</span></div>
+    <div class="l"><span>Estorno</span><span>R$ {{ estorno | brl }}</span></div>
+    {% endif %}
+    {% if r.cashback_nc > 0 %}
+    <div class="l"><span>Cashback</span><span>{{ r.cashback_nc | brl }} NC</span></div>
+    {% endif %}
+    <div class="l"><span>Pagamento</span><span>{{ metodo_label }}</span></div>
+    <hr>
+    <div class="centro">Obrigado por carregar<br>com a NexusCharge</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    // Terminal público: o recibo não pode ficar na tela para o próximo motorista.
+    var s = 60, rotulo = document.getElementById('fecha');
+    setInterval(function () {
+        s -= 1; rotulo.textContent = s;
+        if (s <= 0) document.getElementById('formConcluir').submit();
+    }, 1000);
+})();
+</script>
+{% endblock %}

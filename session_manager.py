@@ -146,6 +146,17 @@ class SessionManager:
                 f"(sessão: {self._chargers[charger_id]})."
             )
 
+        # Um carro não carrega em dois conectores ao mesmo tempo. A regra mora
+        # aqui, e não em cada rota, porque todos os caminhos de início — app,
+        # totem com conta, totem sem conta, painel do operador — passam por
+        # este método. "N/A" é a placa das sessões sem veículo informado.
+        em_uso = self.sessao_ativa_do_veiculo(vehicle_id)
+        if em_uso is not None:
+            raise ValueError(
+                f"O veículo {vehicle_id} já está carregando em "
+                f"{em_uso.charger_id}."
+            )
+
         # Valida faixa de potência (mínima do HCA trifásico: 4.2 kW)
         if not (4.2 <= requested_power_kw <= POTENCIA_NOMINAL_KW):
             raise ValueError(
@@ -472,6 +483,14 @@ class SessionManager:
         Quem só quer ler sem risco de alterar a ordem usa `list_all()`.
         """
         return self._sessions
+
+    def sessao_ativa_do_veiculo(self, placa: str) -> Optional[ChargingSession]:
+        """Sessão em andamento do veículo, ou None se ele não está carregando."""
+        placa = (placa or "").strip().upper()
+        if not placa or placa == "N/A":
+            return None
+        return next((s for s in self._sessions
+                     if s.is_active and s.vehicle_id.upper() == placa), None)
 
     def list_active(self) -> List[ChargingSession]:
         """Lista todas as sessões em andamento (CHARGING ou THROTTLED)."""

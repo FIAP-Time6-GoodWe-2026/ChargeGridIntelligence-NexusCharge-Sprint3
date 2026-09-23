@@ -1,0 +1,42 @@
+{% extends "totem_base.html" %}
+{% block title %}Recarga sem conta — NexusCharge{% endblock %}
+
+{% block totem %}
+<div>
+    <h1 class="tt-titulo">Recarga sem conta</h1>
+    <p class="tt-sub">Só a placa. Sem cadastro, sem CPF, sem senha.</p>
+</div>
+
+<form method="POST" action="{{ url_for('totem_sem_conta') }}" id="formSemConta" style="display:contents">
+    <div class="tt-campo">
+        <label for="placa">Placa do carro</label>
+        <input type="text" id="placa" name="placa" class="placa" required maxlength="8"
+               placeholder="ABC1D23" autocapitalize="characters" spellcheck="false"
+               autocomplete="off" autofocus>
+    </div>
+
+    <div class="tt-painel">
+        <div class="tt-linha"><span>Sinal</span><strong>R$ {{ caucao | brl }}</strong></div>
+        <div class="tt-linha"><span>Tarifa agora</span><strong>R$ {{ tarifa.tariff_kwh | brl }} / kWh</strong></div>
+        <p class="tt-nota" style="margin-top: var(--sp-4)">
+            O sinal fica retido enquanto você carrega. No fim, o consumo é
+            descontado e <strong>a diferença volta para você</strong>. Se passar
+            de R$ {{ caucao | brl }}, o restante é cobrado no encerramento.
+        </p>
+    </div>
+
+    <div class="tt-acoes">
+        <button type="submit" class="tt-btn primario">Pagar sinal e iniciar recarga</button>
+        <a class="tt-btn discreto" href="{{ url_for('totem_home') }}">Voltar</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var placa = document.getElementById('placa');
+    placa.addEventListener('input', function () { placa.value = placa.value.toUpperCase(); });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "totem_base.html" %}
+{% block title %}Configurar totem — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.tc-posto { display: grid; gap: var(--sp-3); }
+.tc-posto h2 { font-size: var(--fs-lg); color: var(--cor-texto); }
+.tc-grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); }
+.tc-grade button {
+    min-height: 64px; border-radius: var(--r-md);
+    border: 2px solid var(--cor-input-border); background: var(--cor-input-bg);
+    color: var(--cor-texto); font: inherit; font-size: var(--fs-lg); font-weight: var(--fw-bold);
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    transition: border-color var(--t-base) var(--ease);
+}
+.tc-grade button small { font-size: var(--fs-2xs); font-weight: var(--fw-medium);
+    color: var(--cor-texto-secundario); }
+.tc-grade button:active { border-color: var(--cor-texto-secundario); }
+.tc-grade button.atual { border-color: var(--cor-primaria); background: rgba(192, 0, 0, .06); }
+.tc-grade button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+{% endblock %}
+
+{% block totem %}
+<div>
+    <h1 class="tt-titulo">Qual conector este totem controla?</h1>
+    <p class="tt-sub">Configuração da instalação. Trocar de conector encerra quem estiver usando o totem.</p>
+</div>
+
+<form method="POST" action="{{ url_for('totem_configurar') }}" class="tt-opcoes">
+    {% for pid, posto in postos.items() %}
+    <section class="tc-posto">
+        <h2>{{ posto.nome }}</h2>
+        <div class="tc-grade">
+            {% for cid in conectores if cid.startswith(pid ~ '-') %}
+            <button type="submit" name="charger_id" value="{{ cid }}"
+                    class="{% if cid == conector_totem %}atual{% endif %}"
+                    {% if cid == conector_totem %}aria-current="true"{% endif %}>
+                {{ cid.split('-')[1] }}
+                <small>{% if cid == conector_totem %}Atual{% elif cid in ocupados %}Em uso{% else %}Livre{% endif %}</small>
+            </button>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</form>
+
+<div class="tt-acoes">
+    <a class="tt-btn secundario" href="{{ url_for('totem_home') }}">Voltar</a>
+</div>
+{% endblock %}

@@ -22,6 +22,8 @@
     </a>
     {% endif %}
 
+    {% include 'partials/_modo_toggle.html' %}
+
     <button class="theme-toggle" title="Alternar tema claro/escuro"
             aria-label="Alternar tema claro/escuro">
         <svg class="icon-sun" viewBox="0 0 24 24" stroke-linecap="round"
@@ -109,6 +111,17 @@
                 Painel de administrador
             </a>
             {% endif %}
+
+            {# No celular a alternância de modo sai do cabeçalho e vem para cá. #}
+            <a href="{{ url_for('trocar_modo', modo='totem') }}" class="perfil-item perfil-so-celular"
+               role="menuitem">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"
+                     aria-hidden="true">
+                    <rect x="6" y="2" width="12" height="14" rx="2"/>
+                    <line x1="12" y1="16" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/>
+                </svg>
+                Mudar para o modo totem
+            </a>
 
             <a href="{{ url_for('logout') }}" class="perfil-item sair" role="menuitem">
                 <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"

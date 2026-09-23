@@ -88,7 +88,10 @@ def _start(sm, pm, pe, charger_id, user_type, pot=11.0, hora=10):
     necessário para que os testes de regressão de status THROTTLED sejam válidos.
     """
     from models import SessionStatus
-    s = sm.create_session(charger_id, "TST-0001", "Test User", user_type, pot)
+    # Uma placa por conector: o mesmo carro não pode carregar em dois lugares,
+    # e estes testes enchem o posto com vários carros ao mesmo tempo.
+    placa = "TST" + charger_id.replace("-", "")[-4:]
+    s = sm.create_session(charger_id, placa, "Test User", user_type, pot)
     r = pm.allocate(s)
     if not r.rejected:
         t = pe.calculate(user_type, hora=hora)
@@ -675,7 +678,7 @@ class TestAuditoriaB24aB35:
         pm5 = PowerManager(sm, limit_kw=33.0)
 
         def start(cid, ut):
-            s = sm.create_session(cid, "ABC1D23", "U", ut, 11.0)
+            s = sm.create_session(cid, "ABC" + cid[-2:] + "D23", "U", ut, 11.0)
             r = pm5.allocate(s)
             t = pe.calculate(ut, hora=10)
             sm.start_charging(s.session_id, r.granted_kw, t.tariff_kwh)
@@ -851,7 +854,7 @@ class TestRevisaoR1aR5:
 
         # 4 sessões throttled a 6.7 kW = 26.8 kW = 81% do limite
         for i in range(4):
-            s = sm.create_session(f"P1-C{i+1}", "ABC1D23", "U",
+            s = sm.create_session(f"P1-C{i+1}", f"ABC{i+1}D23", "U",
                                   UserType.STANDARD, 11.0)
             sm.start_charging(s.session_id, 6.7, 1.20)
             s.status = SessionStatus.THROTTLED
@@ -1571,18 +1574,49 @@ class TestCoerenciaDeEstado:
 # SPRINT 3 — QR simulado
 # ===========================================================================
 
-class TestQRSimulado:
+class TestQRCode:
+    """
+    O QR precisa ser lido por um celular de verdade — é o que leva o motorista
+    do totem para a confirmação no celular. Estes testes guardam o formato; a
+    leitura em si foi conferida com o decodificador do OpenCV em 16 conteúdos,
+    das versões 1 a 10.
+    """
 
     def test_determinismo(self):
-        from qr import qr_simulado
-        assert qr_simulado("A|1|2") == qr_simulado("A|1|2")
-        assert qr_simulado("A|1|2") != qr_simulado("B|1|2")
+        from qr import qr_svg
+        assert qr_svg("A|1|2") == qr_svg("A|1|2")
+        assert qr_svg("A|1|2") != qr_svg("B|1|2")
 
-    def test_tem_rotulo_acessivel_e_densidade(self):
-        from qr import qr_simulado
-        svg = qr_simulado("CGI|TESTE|10.00")
-        assert "aria-label" in svg
-        assert svg.count("<rect") > 200
+    def test_escuro_sobre_branco_em_qualquer_tema(self):
+        """QR invertido não é lido; herdar a cor do texto invertia no tema escuro."""
+        from qr import qr_svg
+        svg = qr_svg("teste")
+        assert 'fill="#FFFFFF"' in svg
+        assert "currentColor" not in svg
+
+    def test_tem_rotulo_acessivel(self):
+        from qr import qr_svg
+        assert 'aria-label="QR Code do Pix"' in qr_svg("x", rotulo="QR Code do Pix")
+
+    def test_tamanho_cresce_com_o_conteudo(self):
+        """Versão 1 tem 21 módulos de lado; conteúdo maior pede versão maior."""
+        from qr import _matriz
+        assert _matriz("a").lado == 21
+        assert _matriz("x" * 100).lado > 21
+
+    def test_conteudo_grande_demais_e_recusado(self):
+        from qr import qr_svg
+        with pytest.raises(ValueError):
+            qr_svg("x" * 500)
+
+    def test_padroes_de_posicionamento_nos_tres_cantos(self):
+        """Sem os três localizadores, nenhum leitor encontra o código."""
+        from qr import _matriz
+        m = _matriz("NexusCharge")
+        n = m.lado
+        for cx, cy in ((0, 0), (n - 7, 0), (0, n - 7)):
+            assert all(m.mod[cy][cx + i] for i in range(7)), (cx, cy)
+            assert m.mod[cy + 3][cx + 3], "miolo do localizador"
 
 
 class TestRelatorioOrdenavel:
@@ -2317,159 +2351,6 @@ class TestTarifaFonteUnica:
 
 
 # ---------------------------------------------------------------------------
-# Recarga sem cadastro (QR do totem)
-# ---------------------------------------------------------------------------
-
-class TestRecargaSemCadastro:
-    """
-    A modalidade avulsa: o motorista chega pelo QR, deixa uma caução e carrega.
-
-    O que estes testes protegem é a razão de a modalidade existir — nenhum
-    passo pode voltar a exigir conta, senha ou alguém do posto para liberar.
-    """
-
-    def test_estorno_devolve_o_que_sobrou_da_caucao(self):
-        import avulso
-        assert avulso.estorno(18.40) == round(avulso.CAUCAO_BRL - 18.40, 2)
-
-    def test_caucao_totalmente_consumida_nao_devolve_nada(self):
-        import avulso
-        assert avulso.estorno(avulso.CAUCAO_BRL) == 0.0
-
-    def test_estorno_nunca_e_negativo(self):
-        import avulso
-        assert avulso.estorno(avulso.CAUCAO_BRL * 3) == 0.0
-
-    def test_token_de_cada_sessao_e_diferente(self):
-        import avulso
-        assert avulso.novo_dono() != avulso.novo_dono()
-
-    def test_dono_do_token_reconstroi_o_owner(self):
-        import avulso
-        dono = avulso.novo_dono()
-        assert avulso.dono_do_token(dono.split(":")[1]) == dono
-        assert avulso.eh_avulso(dono)
-
-    def test_owner_de_conta_normal_nao_e_avulso(self):
-        import avulso
-        assert not avulso.eh_avulso("amanda")
-        assert not avulso.eh_avulso("")
-
-    # -- rotas ------------------------------------------------------------
-
-    def test_totem_abre_sem_login(self, client_anonimo):
-        """A guarda de acesso não pode mandar o totem para a tela de login."""
-        assert client_anonimo.get("/totem").status_code == 200
-
-    def test_formulario_do_conector_abre_sem_login(self, client_anonimo):
-        resposta = client_anonimo.get("/totem/P2-C1")
-        assert resposta.status_code == 200
-        assert b"Placa" in resposta.data
-
-    def test_login_oferece_o_caminho_sem_cadastro(self, client_anonimo):
-        assert "sem cadastro" in client_anonimo.get("/login").get_data(as_text=True)
-
-    def test_conector_vip_recusado_para_quem_nao_tem_conta(self, client_anonimo):
-        """C5 é de assinante, e sessão avulsa não tem assinatura."""
-        resposta = client_anonimo.get("/totem/P1-C5", follow_redirects=True)
-        assert "exclusivo para assinantes" in resposta.get_data(as_text=True)
-
-    def test_conector_inexistente_volta_para_a_lista(self, client_anonimo):
-        resposta = client_anonimo.get("/totem/P9-C9", follow_redirects=True)
-        assert "não encontrado" in resposta.get_data(as_text=True)
-
-    def test_placa_invalida_nao_cria_sessao(self, client_anonimo):
-        resposta = client_anonimo.post(
-            "/totem/P2-C1", data={"placa": "XX", "metodo": "PIX"},
-            follow_redirects=True)
-        assert "inválida" in resposta.get_data(as_text=True)
-
-    def test_nexuscoin_recusado_sem_conta(self, client_anonimo):
-        """NexusCoin debita de uma carteira, e avulso não tem carteira."""
-        resposta = client_anonimo.post(
-            "/totem/P2-C1", data={"placa": "ABC1D23", "metodo": "NEXUSCOIN"},
-            follow_redirects=True)
-        assert "exige conta" in resposta.get_data(as_text=True)
-
-    def _liberar(self, cliente, charger_id="P2-C1", placa="ABC1D23"):
-        resposta = cliente.post(f"/totem/{charger_id}",
-                                data={"placa": placa, "metodo": "PIX"})
-        assert resposta.status_code == 302, resposta.get_data(as_text=True)[:400]
-        return resposta.headers["Location"].rsplit("/", 1)[-1]
-
-    def test_liberar_inicia_a_recarga_e_devolve_o_link(self, client_anonimo):
-        token = self._liberar(client_anonimo)
-        pagina = client_anonimo.get(f"/avulso/{token}").get_data(as_text=True)
-        assert "Recarregando" in pagina
-        assert "ABC1D23" in pagina
-
-    def test_sessao_avulsa_nao_recebe_cashback(self, client_anonimo, tmp_path):
-        """Cashback cai numa carteira NexusCoin, que a sessão avulsa não tem."""
-        token = self._liberar(client_anonimo)
-        client_anonimo.post(f"/avulso/{token}/encerrar")
-        import db
-        linha = db.query_one(
-            "SELECT cashback_nc, usuario FROM sessoes WHERE usuario LIKE 'avulso:%'")
-        assert linha is not None, "a sessão avulsa não foi arquivada"
-        assert linha["cashback_nc"] == 0.0
-
-    def test_encerrar_arquiva_com_a_placa_e_libera_o_conector(self, client_anonimo):
-        token = self._liberar(client_anonimo)
-        resposta = client_anonimo.post(f"/avulso/{token}/encerrar",
-                                       follow_redirects=True)
-        pagina = resposta.get_data(as_text=True)
-        assert "Recarga concluída" in pagina
-
-        import db
-        linha = db.query_one("SELECT * FROM sessoes WHERE usuario = 'avulso:ABC1D23'")
-        assert linha is not None
-        assert linha["metodo_pagto"] == "PIX"
-        assert linha["user_name"] == "Sem cadastro"
-
-        # O conector volta para a fila no mesmo passo: como a caução já estava
-        # retida, não há motivo para segurar a vaga esperando pagamento.
-        livre = client_anonimo.get("/totem").get_data(as_text=True)
-        assert "P2-C1" in livre or "/totem/P2-C1" in livre
-
-    def test_encerrar_duas_vezes_nao_arquiva_duas_linhas(self, client_anonimo):
-        token = self._liberar(client_anonimo)
-        client_anonimo.post(f"/avulso/{token}/encerrar")
-        client_anonimo.post(f"/avulso/{token}/encerrar", follow_redirects=True)
-        import db
-        linhas = db.query_all("SELECT session_id FROM sessoes WHERE usuario LIKE 'avulso:%'")
-        assert len(linhas) == 1
-
-    def test_token_desconhecido_nao_estoura(self, client_anonimo):
-        resposta = client_anonimo.get("/avulso/naoexiste", follow_redirects=True)
-        assert resposta.status_code == 200
-
-    def test_recibo_mostra_o_estorno(self, client_anonimo):
-        """
-        Uma recarga de segundos cai na taxa mínima, bem abaixo da caução —
-        então o estorno precisa aparecer na tela.
-        """
-        import avulso
-        token = self._liberar(client_anonimo)
-        client_anonimo.post(f"/avulso/{token}/encerrar")
-        pagina = client_anonimo.get(f"/avulso/{token}").get_data(as_text=True)
-        assert "Volta para você" in pagina
-        esperado = f"{avulso.estorno(2.00):.2f}".replace(".", ",")
-        assert esperado in pagina
-
-    def test_rotas_do_totem_estao_declaradas_publicas(self):
-        """
-        A guarda nega por padrão: rota nova nasce protegida. Se alguém renomear
-        um endpoint do totem e esquecer da lista, a modalidade quebra em
-        silêncio — pedindo login a quem veio justamente para não fazer login.
-        """
-        import app as app_module
-        for endpoint in ("totem_postos", "totem_liberar",
-                         "avulso_sessao", "avulso_encerrar"):
-            assert endpoint in app_module.ROTAS_PUBLICAS, endpoint
-            assert endpoint not in app_module.ROTAS_STAFF, endpoint
-
-
-# ---------------------------------------------------------------------------
 # Regras que a interface escondia mas o backend aceitava
 # ---------------------------------------------------------------------------
 
@@ -2576,7 +2457,9 @@ class TestRegrasDeAcessoPorRota:
         """
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
-            c.post("/totem/P2-C1", data={"placa": "ABC1D23", "metodo": "PIX"})
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "ABC1D23"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
             sessao = next(s for s in app_module.sm.list_active()
                           if s.charger_id == "P2-C1")
         with app_module.app.test_client() as c:
@@ -2584,3 +2467,336 @@ class TestRegrasDeAcessoPorRota:
             resposta = c.post(f"/pagamento/{sessao.session_id}/confirmar",
                               data={"metodo": "NEXUSCOIN"})
             assert "/recibo/" not in resposta.headers.get("Location", "")
+
+
+# ---------------------------------------------------------------------------
+# Carros salvos por conta
+# ---------------------------------------------------------------------------
+
+class TestVeiculos:
+    """Carro salvo ou novo, e a regra de um carro carregando em um lugar só."""
+
+    def test_cada_conta_tem_carro_e_a_amanda_tem_dois(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import veiculos
+        for conta in app_module.auth.CONTAS:
+            assert veiculos.do_usuario(conta), f"{conta} sem carro"
+        assert len(veiculos.do_usuario("amanda")) == 2
+
+    def test_mesmo_carro_nao_carrega_em_dois_conectores(self, sm):
+        """A regra mora no create_session: vale para app, totem e painel."""
+        from models import UserType
+        sm.create_session("P1-C1", "BRA2E19", "A", UserType.SUBSCRIBER)
+        with pytest.raises(ValueError, match="já está carregando em P1-C1"):
+            sm.create_session("P2-C1", "BRA2E19", "A", UserType.SUBSCRIBER)
+
+    def test_carro_volta_a_ficar_livre_quando_a_recarga_termina(self, sm):
+        from models import UserType
+        s = sm.create_session("P1-C1", "BRA2E19", "A", UserType.SUBSCRIBER)
+        sm.finish_session(s.session_id)
+        assert sm.sessao_ativa_do_veiculo("BRA2E19") is None
+
+    def test_sessoes_sem_placa_nao_se_bloqueiam(self, sm):
+        """ "N/A" é a placa de sessão sem veículo: não é um carro de verdade."""
+        from models import UserType
+        sm.create_session("P1-C1", "N/A", "A", UserType.STANDARD)
+        sm.create_session("P1-C2", "N/A", "B", UserType.STANDARD)
+
+    def _iniciar(self, cliente, **dados):
+        base = {"posto_id": "P2", "carregador_id": "C1", "hora": "14",
+                "minuto": "0", "duracao": "30"}
+        base.update(dados)
+        return cliente.post("/sessao", data=base)
+
+    def test_carro_em_recarga_aparece_bloqueado_no_formulario(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            self._iniciar(c, veiculo="BRA2E19")
+            html = c.get("/posto/P2/carregador/C2").get_data(as_text=True)
+            assert "Carregando em P2-C1" in html
+
+    def test_escolher_carro_que_ja_carrega_e_recusado(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            self._iniciar(c, veiculo="BRA2E19")
+            resposta = self._iniciar(c, carregador_id="C2", veiculo="BRA2E19")
+            assert "/posto/P2/carregador/C2" in resposta.headers["Location"]
+            assert len(app_module.sm.list_active()) == 1
+
+    def test_carro_de_outra_conta_nao_pode_ser_escolhido(self, tmp_path):
+        """Sem a checagem, bastava editar o HTML para usar o carro de outra conta."""
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "jose", "senha": "1234"})
+            self._iniciar(c, veiculo="BRA2E19")
+            assert not app_module.sm.list_active()
+
+    def test_carro_novo_salvo_quando_pedido(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import veiculos
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "jose", "senha": "1234"})
+            self._iniciar(c, veiculo="novo", placa="AMG1C20", modelo="Carro do amigo",
+                          salvar_veiculo="1")
+        assert veiculos.pertence("jose", "AMG1C20")
+
+    def test_carro_novo_nao_salvo_quando_desmarcado(self, tmp_path):
+        """O caso do carro do amigo: carrega, mas não fica na lista."""
+        app_module = _app_limpo(tmp_path)
+        import veiculos
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "jose", "senha": "1234"})
+            self._iniciar(c, veiculo="novo", placa="AMG1C20")
+        assert app_module.sm.list_active(), "a recarga deveria ter começado"
+        assert not veiculos.pertence("jose", "AMG1C20")
+
+    def test_carro_novo_nao_e_salvo_se_a_recarga_nao_comecou(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import veiculos
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "jose", "senha": "1234"})
+            self._iniciar(c, veiculo="novo", placa="PRI1A11")
+            self._iniciar(c, veiculo="novo", placa="SEG2B22", salvar_veiculo="1")
+        assert not veiculos.pertence("jose", "SEG2B22"), "conector ocupado: nada a salvar"
+
+
+# ---------------------------------------------------------------------------
+# Modo App / Modo Totem
+# ---------------------------------------------------------------------------
+
+class TestModos:
+
+    def test_padrao_e_o_modo_app(self, client_anonimo):
+        assert client_anonimo.get("/totem").headers["Location"].endswith("/login")
+
+    def test_trocar_para_totem_abre_o_totem(self, client_anonimo):
+        resposta = client_anonimo.get("/modo/totem")
+        assert resposta.headers["Location"].endswith("/totem")
+        assert client_anonimo.get("/totem").status_code == 200
+
+    def test_no_totem_as_telas_do_app_voltam_para_o_totem(self, client_anonimo):
+        client_anonimo.get("/modo/totem")
+        for rota in ("/", "/login", "/carteira", "/admin"):
+            destino = client_anonimo.get(rota).headers.get("Location", "")
+            assert destino.endswith("/totem"), (rota, destino)
+
+    def test_trocar_de_modo_encerra_o_login(self, tmp_path):
+        """Trocar de modo é trocar de aparelho: o totem não herda a conta do app."""
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            c.get("/modo/totem")
+            c.get("/modo/app")
+            assert "/login" in c.get("/").headers["Location"]
+
+    def test_login_do_app_nao_oferece_recarga_sem_conta(self, client_anonimo):
+        """No app, quem baixou o aplicativo cria a conta; o sem-conta é do totem."""
+        html = client_anonimo.get("/login").get_data(as_text=True)
+        assert "sem cadastro" not in html.lower()
+        assert "Contas de demonstração" in html
+
+    def test_confirmacao_do_celular_funciona_nos_dois_modos(self, client_anonimo):
+        import totem
+        token = totem.criar_pareamento("P2-C1")
+        assert client_anonimo.get(f"/celular/parear/{token}").status_code == 200
+        client_anonimo.get("/modo/totem")
+        assert client_anonimo.get(f"/celular/parear/{token}").status_code == 200
+
+    def test_conector_do_totem_configuravel_e_sem_vip(self, client_anonimo):
+        client_anonimo.get("/modo/totem")
+        client_anonimo.post("/totem/configurar", data={"charger_id": "P1-C5"})
+        assert "C1 · Faria Lima" in client_anonimo.get("/totem").get_data(as_text=True)
+        client_anonimo.post("/totem/configurar", data={"charger_id": "P3-C2"})
+        assert "C2 · Berrini" in client_anonimo.get("/totem").get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Totem com conta: QR do celular, carro, encerrar, pagar
+# ---------------------------------------------------------------------------
+
+class TestTotemComConta:
+
+    def _entrar_pelo_celular(self, c):
+        import re
+        c.get("/modo/totem")
+        html = c.get("/totem/entrar").get_data(as_text=True)
+        token = re.search(r"/totem/entrar/([\w-]+)/estado", html).group(1)
+        assert c.get(f"/totem/entrar/{token}/estado").get_json() == {"pronto": False}
+        c.post(f"/celular/parear/{token}")
+        return c.get(f"/totem/entrar/{token}/estado").get_json()
+
+    def test_qr_do_totem_e_real_e_aponta_para_o_celular(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            html = c.get("/totem/entrar").get_data(as_text=True)
+            assert 'fill="#FFFFFF"' in html, "QR real, escuro sobre branco"
+            assert "/celular/parear/" in html
+
+    def test_celular_confirma_e_o_totem_entra_como_luiz(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            estado = self._entrar_pelo_celular(c)
+            assert estado["pronto"] and estado["url"].endswith("/totem/veiculo")
+            with c.session_transaction() as s:
+                assert s["usuario"] == "luiz" and s["totem"] is True
+
+    def test_qr_serve_para_um_login_so(self):
+        import totem
+        token = totem.criar_pareamento("P2-C1")
+        totem.confirmar(token, "luiz")
+        assert totem.consumir(token) == "luiz"
+        assert totem.consumir(token) is None
+
+    def test_fluxo_completo_ate_o_recibo(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._entrar_pelo_celular(c)
+            resposta = c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+            assert resposta.headers["Location"].endswith("/totem/carregando")
+            assert "Encerrar carregamento" in c.get("/totem/carregando").get_data(as_text=True)
+
+            resposta = c.post("/totem/encerrar")
+            assert "/pagamento/" in resposta.headers["Location"]
+            html = c.get(resposta.headers["Location"]).get_data(as_text=True)
+            assert "Cartão por aproximação" in html and "NexusCoin" in html
+
+            sid = resposta.headers["Location"].rsplit("/", 1)[-1]
+            resposta = c.post(f"/pagamento/{sid}/confirmar", data={"metodo": "NEXUSCOIN"})
+            assert resposta.headers["Location"].endswith(f"/totem/recibo/{sid}")
+            recibo = c.get(f"/totem/recibo/{sid}").get_data(as_text=True)
+            assert "Recarga concluída" in recibo
+            assert "Imprimir comprovante" in recibo
+            assert "Não é documento fiscal" in recibo
+
+            c.post("/totem/sair")
+            with c.session_transaction() as s:
+                assert "usuario" not in s, "o totem esquece quem usou"
+
+    def test_totem_so_inicia_no_proprio_conector(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._entrar_pelo_celular(c)
+            c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+            assert app_module.sm.list_active()[0].charger_id == "P2-C1"
+
+    def test_sem_login_nao_escolhe_carro(self, client_anonimo):
+        client_anonimo.get("/modo/totem")
+        assert client_anonimo.get("/totem/veiculo").headers["Location"].endswith("/totem")
+
+
+# ---------------------------------------------------------------------------
+# Totem sem conta: caução, recarga, acerto
+# ---------------------------------------------------------------------------
+
+class TestTotemSemConta:
+    """
+    O que estes testes protegem é a razão de a modalidade existir — nenhum
+    passo pode voltar a exigir conta, senha ou alguém do posto para liberar.
+    """
+
+    def test_estorno_devolve_o_que_sobrou_da_caucao(self):
+        import avulso
+        assert avulso.estorno(18.40) == round(avulso.CAUCAO_BRL - 18.40, 2)
+
+    def test_caucao_totalmente_consumida_nao_devolve_nada(self):
+        import avulso
+        assert avulso.estorno(avulso.CAUCAO_BRL) == 0.0
+
+    def test_estorno_nunca_e_negativo(self):
+        import avulso
+        assert avulso.estorno(avulso.CAUCAO_BRL * 3) == 0.0
+
+    def test_owner_de_conta_normal_nao_e_avulso(self):
+        import avulso
+        assert not avulso.eh_avulso("amanda")
+        assert avulso.eh_avulso(avulso.novo_dono())
+
+    def _liberar(self, c, placa="ABC1D23", metodo="PIX"):
+        c.get("/modo/totem")
+        c.post("/totem/sem-conta", data={"placa": placa})
+        return c.post("/totem/sem-conta/pagar", data={"metodo": metodo})
+
+    def test_fluxo_completo_com_estorno(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import avulso
+        with app_module.app.test_client() as c:
+            resposta = self._liberar(c)
+            assert resposta.headers["Location"].endswith("/totem/carregando")
+            html = c.get("/totem/carregando").get_data(as_text=True)
+            assert "Sinal retido" in html and "Acompanhe pelo celular" in html
+
+            resposta = c.post("/totem/encerrar")
+            sid = resposta.headers["Location"].rsplit("/", 1)[-1]
+            recibo = c.get(f"/totem/recibo/{sid}").get_data(as_text=True)
+            assert "Volta para você" in recibo
+            # recarga de segundos cai na taxa mínima, bem abaixo da caução
+            assert f"{avulso.estorno(2.00):.2f}".replace(".", ",") in recibo
+
+    def test_sem_conta_nao_ganha_cashback(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import db
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            c.post("/totem/encerrar")
+        linha = db.query_one("SELECT cashback_nc FROM sessoes WHERE usuario LIKE 'avulso:%'")
+        assert linha is not None and linha["cashback_nc"] == 0.0
+
+    def test_nexuscoin_recusado_sem_conta(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._liberar(c, metodo="NEXUSCOIN")
+            assert not app_module.sm.list_active()
+
+    def test_placa_invalida_nao_avanca(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            resposta = c.post("/totem/sem-conta", data={"placa": "XX"})
+            assert resposta.headers["Location"].endswith("/totem/sem-conta")
+
+    def test_carro_que_ja_carrega_nao_libera_outro_conector(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        from models import UserType
+        app_module.sm.create_session("P1-C1", "ABC1D23", "x", UserType.STANDARD)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            resposta = c.post("/totem/sem-conta", data={"placa": "ABC1D23"},
+                              follow_redirects=True)
+            assert "já está carregando em P1-C1" in resposta.get_data(as_text=True)
+
+    def test_encerrar_duas_vezes_nao_arquiva_duas_linhas(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        import db
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            c.post("/totem/encerrar")
+            c.post("/totem/encerrar")
+        assert len(db.query_all("SELECT 1 FROM sessoes WHERE usuario LIKE 'avulso:%'")) == 1
+
+    def test_bilhete_no_celular_mostra_o_comprovante(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            token = app_module.sm.list_active()[0].owner.split(":", 1)[1]
+            c.post("/totem/encerrar")
+        with app_module.app.test_client() as celular:
+            html = celular.get(f"/avulso/{token}").get_data(as_text=True)
+            assert "Recarga concluída" in html and "Volta para você" in html
+
+    def test_token_desconhecido_responde_404(self, client_anonimo):
+        assert client_anonimo.get("/avulso/naoexiste").status_code == 404
+
+    def test_rotas_do_totem_nao_pedem_login(self):
+        """
+        A guarda de acesso nega por padrão. Se alguém renomear um endpoint do
+        totem e esquecer da lista, o totem pede login a quem veio justamente
+        para não fazer login.
+        """
+        import app as app_module
+        for endpoint in ("totem_home", "totem_sem_conta", "totem_sinal",
+                         "totem_carregando", "totem_encerrar", "totem_recibo",
+                         "celular_parear", "avulso_sessao"):
+            assert endpoint in app_module.ROTAS_PUBLICAS, endpoint

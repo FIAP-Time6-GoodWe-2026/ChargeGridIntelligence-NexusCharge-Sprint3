@@ -244,7 +244,7 @@ class PowerManager:
             result.load_after_kw = carga_atual
             result.occupancy_pct = round((carga_atual / self._limit) * 100, 1)
             result.message = (
-                f"🚫 Conexão recusada: {n_total} conectores × {POTENCIA_MINIMA_KW} kW mín "
+                f"Conexão recusada: {n_total} conectores × {POTENCIA_MINIMA_KW} kW mín "
                 f"= {minimo_total:.1f} kW > limite {self._limit:.1f} kW. "
                 f"Aguarde liberação de um conector."
             )
@@ -259,7 +259,7 @@ class PowerManager:
             result.load_after_kw = carga_projetada
             result.occupancy_pct = round((carga_projetada / self._limit) * 100, 1)
             result.message = (
-                f"✅ Potência integral concedida: {solicitada:.1f} kW "
+                f"Potência integral concedida: {solicitada:.1f} kW "
                 f"(carga total: {carga_projetada:.1f}/{self._limit:.1f} kW "
                 f"— {result.occupancy_pct:.1f}%)"
             )
@@ -304,7 +304,7 @@ class PowerManager:
                 (result.load_after_kw / self._limit) * 100, 1
             )
             result.message = (
-                f"🔴 Limite excedido — redistribuição automática por prioridade: "
+                f"Limite excedido — redistribuição automática por prioridade: "
                 f"{len(sessoes_ativas)} sessão(ões) reajustadas "
                 f"(nova sessão recebe {concedida:.1f} kW) "
                 f"| carga final: {result.load_after_kw:.1f}/{self._limit:.1f} kW"
@@ -430,7 +430,7 @@ class PowerManager:
             limit_kw=self._limit,
             throttle_events=events,
             message=(
-                f"✅ Rebalanceamento: {len(events)} sessão(ões) restauradas "
+                f"Rebalanceamento: {len(events)} sessão(ões) restauradas "
                 f"(carga: {carga_apos:.1f}/{self._limit:.1f} kW "
                 f"— {round(carga_apos/self._limit*100,1):.1f}%) "
                 f"[insertion sort: {len(throttled)} em fila, "

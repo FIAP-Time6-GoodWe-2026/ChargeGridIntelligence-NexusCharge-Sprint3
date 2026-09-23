@@ -1,0 +1,59 @@
+{% extends "totem_base.html" %}
+{% block title %}Totem {{ cid }} — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.th-status { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.th-conector { font-size: 4.5rem; line-height: 1; font-weight: var(--fw-bold);
+    letter-spacing: -.04em; color: var(--cor-texto); }
+.th-posto { font-size: var(--fs-lg); color: var(--cor-texto-secundario); margin-top: var(--sp-2); }
+{% endblock %}
+
+{% block totem %}
+<section>
+    <div class="th-status">
+        <div class="th-conector">{{ cid.split('-')[1] }}</div>
+        {% if ocupado %}
+        <span class="tt-estado ocupado">Em uso</span>
+        {% elif reservado %}
+        <span class="tt-estado ocupado">Reservado</span>
+        {% else %}
+        <span class="tt-estado livre">Livre</span>
+        {% endif %}
+    </div>
+    <div class="th-posto">{{ posto.nome }} · {{ posto.endereco }}</div>
+</section>
+
+<div class="tt-painel">
+    <div class="tt-linha"><span>Tarifa agora</span><strong>R$ {{ tarifa.tariff_kwh | brl }} / kWh</strong></div>
+    <div class="tt-linha"><span>Potência máxima</span><strong>11 kW</strong></div>
+</div>
+
+<div class="tt-acoes">
+    <a class="tt-btn primario tt-btn-duplo" href="{{ url_for('totem_entrar') }}">
+        Entrar com conta existente
+        <span class="tt-btn-sub">
+            {% if ocupado %}Para encerrar a sua recarga{% else %}Pelo celular, sem digitar senha{% endif %}
+        </span>
+    </a>
+    {% if ocupado or reservado %}
+    <button class="tt-btn secundario tt-btn-duplo" type="button" disabled>
+        Usar totem sem conta
+        <span class="tt-btn-sub">
+            {% if ocupado %}Disponível quando este carro terminar{% else %}Conector reservado por outro motorista{% endif %}
+        </span>
+    </button>
+    {% else %}
+    <a class="tt-btn secundario tt-btn-duplo" href="{{ url_for('totem_sem_conta') }}">
+        Usar totem sem conta
+        <span class="tt-btn-sub">Sinal de R$ {{ caucao | brl }}, com devolução do que sobrar</span>
+    </a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block totem_rodape %}
+<footer class="tt-rodape">
+    <span>NexusCharge · ChargeGrid Intelligence</span>
+    <a href="{{ url_for('totem_configurar') }}">Configurar totem</a>
+</footer>
+{% endblock %}

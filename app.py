@@ -58,10 +58,12 @@ import avulso
 import billing
 import db
 import reservations
+import totem
+import veiculos
 import wallet
 from logica_recarga import processar_sessao   # Sprint 1 — intacto
 from models import UserType, SessionStatus
-from qr import qr_simulado
+from qr import qr_svg
 from session_manager import SessionManager
 from power_manager import PowerManager
 from pricing_engine import PricingEngine
@@ -149,6 +151,7 @@ LIMITE_POR_POSTO_KW = 33.0
 
 # Sprint 3 — cria as tabelas do SQLite na primeira execução. Idempotente.
 db.init()
+veiculos.garantir_iniciais()
 
 sm = SessionManager()
 
@@ -377,8 +380,9 @@ def _atualizar_carregadores_livres() -> None:
 # Endpoints acessíveis sem autenticação.
 ROTAS_PUBLICAS: set[str] = {
     "login", "static",
-    # Recarga sem cadastro: o motorista chega pelo QR do totem, sem conta.
-    "totem_postos", "totem_liberar", "avulso_sessao", "avulso_encerrar",
+    # O bilhete da recarga sem conta, aberto no celular pelo QR do totem.
+    # As telas do totem entram mais abaixo, junto com o modo totem.
+    "avulso_sessao",
 }
 
 # Endpoints restritos ao perfil staff (dono do posto).
@@ -399,6 +403,9 @@ def _guarda_de_acesso():
     adicioná-la explicitamente a ROTAS_PUBLICAS — o erro seguro é negar.
     """
     endpoint = request.endpoint
+    desvio = _guarda_de_modo()
+    if desvio is not None:
+        return desvio
     if endpoint is None or endpoint in ROTAS_PUBLICAS:
         return None
 
@@ -490,8 +497,6 @@ def login():
         contas=auth.CONTAS,
         senha_demo=auth.SENHA_PADRAO,
         next=request.args.get("next", ""),
-        qr_totem=qr_simulado("CGI|TOTEM", modulos=21),
-        caucao=avulso.CAUCAO_BRL,
     )
 
 
@@ -645,7 +650,46 @@ def formulario(posto_id: str, carregador_id: str):
         carregador={"id": carregador_id, "nome": f"Carregador {carregador_id}",
                     "tipo": "publico"},
         posto_em_throttle=POSTOS[posto_id].get("em_throttle", False),
+        carros=_carros_com_estado(user_session["usuario"]),
     )
+
+
+def _veiculo_do_formulario(usuario: str) -> tuple[str, bool]:
+    """
+    Lê o carro escolhido no formulário de início de recarga.
+
+    Returns:
+        (placa normalizada, deve_salvar_na_conta)
+
+    Raises:
+        ValueError : placa inválida, ou placa "salva" que não é da conta
+    """
+    escolha = request.form.get("veiculo", "").strip()
+    if escolha and escolha != "novo":
+        placa = _validar_placa(escolha)
+        # Sem esta checagem, bastava editar o HTML para "escolher" um carro
+        # salvo em outra conta.
+        if usuario and not veiculos.pertence(usuario, placa):
+            raise ValueError("Esse carro não está salvo na sua conta.")
+        return placa, False
+
+    placa = _validar_placa(request.form.get("placa", ""))
+    salvar = bool(usuario) and request.form.get("salvar_veiculo") == "1"
+    return placa, salvar
+
+
+def _carros_com_estado(usuario: str) -> list[dict]:
+    """
+    Carros da conta, cada um com o conector onde está carregando agora.
+
+    O estado vem das sessões ativas, não do cadastro: é a mesma fonte que o
+    `create_session` consulta para recusar o carro que já está carregando.
+    """
+    carros = veiculos.do_usuario(usuario)
+    for carro in carros:
+        ativa = sm.sessao_ativa_do_veiculo(carro["placa"])
+        carro["carregando_em"] = ativa.charger_id if ativa else None
+    return carros
 
 
 @app.route("/sessao", methods=["POST"])
@@ -684,10 +728,9 @@ def processar():
             )
             return redirect(url_for("posto", posto_id=posto_id))
 
-        # #B31 — valida a placa quando informada. O formulário do Sprint 1 permite
-        # placa vazia (sessão de demonstração), nesse caso mantemos "N/A".
-        placa_raw = request.form.get("placa", "").strip()
-        vehicle_id = _validar_placa(placa_raw) if placa_raw else "N/A"
+        # O carro vem de duas formas: um salvo na conta (o campo `veiculo`
+        # traz a placa) ou um novo, digitado agora (`veiculo` = "novo").
+        vehicle_id, salvar_novo = _veiculo_do_formulario(owner)
 
         # Conector reservado por outra pessoa não pode ser iniciado.
         reserva_conector = reservations.ativa_do_conector(cid_full)
@@ -729,6 +772,11 @@ def processar():
             if result.redistributed and result.throttle_events:
                 mb.on_throttle(session, result)
 
+        # Só salva o carro novo depois que a recarga começou de fato: se o
+        # conector estivesse ocupado, o carro não entraria na conta à toa.
+        if salvar_novo:
+            veiculos.salvar(owner, vehicle_id, request.form.get("modelo", ""))
+
         # O usuário compareceu: a reserva é honrada e o sinal vira crédito,
         # que será abatido na tela de pagamento ao encerrar a recarga.
         sinal = reservations.consumir(owner, cid_full)
@@ -766,11 +814,21 @@ def processar():
         )
 
     except ValueError as e:
+        # Volta ao formulário do mesmo conector, e não ao mapa: o erro mais
+        # comum aqui é o carro escolhido já estar carregando em outro lugar,
+        # e a pessoa só precisa trocar de carro.
         flash(str(e), "error")
+        posto_id = request.form.get("posto_id", "")
+        carregador_id = request.form.get("carregador_id", "")
+        if posto_id in POSTOS and carregador_id:
+            return redirect(url_for("formulario", posto_id=posto_id,
+                                    carregador_id=carregador_id))
         return redirect(url_for("mapa"))
-    except Exception as e:
+    except Exception:
+        # A mensagem da exceção não vai para a tela: pode conter detalhe
+        # interno, e não diz ao motorista nada que ele possa fazer.
         logger.exception("Erro inesperado em /sessao")
-        flash(f"Erro: {e}", "error")
+        flash("Não foi possível iniciar a recarga. Tente de novo.", "error")
         return redirect(url_for("mapa"))
 
 
@@ -982,14 +1040,14 @@ def dashboard_nova_sessao():
                 mb.on_throttle(session, result)
 
         flash(
-            f"✅ Sessão {session.session_id} iniciada — "
+            f"Sessão {session.session_id} iniciada — "
             f"{result.granted_kw:.1f} kW | {pe.tariff_label(tariff)}",
             "success",
         )
 
         if result.redistributed:
             flash(
-                f"⚠️ Redistribuição automática: {result.message}",
+                f"Redistribuição automática: {result.message}",
                 "warning",
             )
 
@@ -1031,10 +1089,10 @@ def dashboard_encerrar():
                 mb.on_rebalance(rb)
 
         if rb:
-            flash(f"🔄 {rb.message}", "info")
+            flash(f"{rb.message}", "info")
 
         flash(
-            f"✅ Sessão {session_id} encerrada — "
+            f"Sessão {session_id} encerrada — "
             f"{session.energy_kwh:.3f} kWh | R$ {session.total_cost_brl:.2f}",
             "success",
         )
@@ -1625,7 +1683,7 @@ def pagamento(session_id: str):
     perfil   = auth.conta(usuario)
 
     return render_template(
-        "pagamento.html",
+        "totem_pagamento.html" if _modo() == "totem" else "pagamento.html",
         sessao=sessao,
         posto=POSTOS.get(sessao.station_id, {}),
         cobranca=cobranca,
@@ -1633,8 +1691,16 @@ def pagamento(session_id: str):
         tem_saldo=wallet.pode_pagar(usuario, cobranca.total_brl),
         cartao_final=perfil["cartao_final"],
         cartao_bandeira=perfil["cartao_bandeira"],
-        qr_svg=qr_simulado(f"CGI|{session_id}|{cobranca.total_brl:.2f}"),
+        qr_svg=qr_svg(f"CGI|{session_id}|{cobranca.total_brl:.2f}",
+                      rotulo="QR Code do Pix"),
     )
+
+
+def _url_do_recibo(session_id: str) -> str:
+    """O recibo do app, ou o do totem quando o pagamento foi feito no totem."""
+    if _modo() == "totem":
+        return url_for("totem_recibo", session_id=session_id)
+    return url_for("recibo", session_id=session_id)
 
 
 @app.route("/pagamento/<session_id>/confirmar", methods=["POST"])
@@ -1664,7 +1730,7 @@ def pagamento_confirmar(session_id: str):
 
     # Idempotência: sessão já paga vai direto ao recibo, sem nova cobrança.
     if _sessao_arquivada(session_id):
-        return redirect(url_for("recibo", session_id=session_id))
+        return redirect(_url_do_recibo(session_id))
 
     try:
         metodo   = billing.normalizar_metodo(request.form.get("metodo", ""))
@@ -1696,7 +1762,7 @@ def pagamento_confirmar(session_id: str):
 
         logger.info("Pagamento confirmado: %s | %s | R$ %.2f | cashback %.2f",
                     session_id, metodo, cobranca.total_brl, cashback)
-        return redirect(url_for("recibo", session_id=session_id))
+        return redirect(_url_do_recibo(session_id))
 
     except wallet.SaldoInsuficiente as e:
         flash(str(e), "error")
@@ -1736,128 +1802,181 @@ def recibo(session_id: str):
     )
 
 
-# ---------------------------------------------------------------------------
-# ── SPRINT 3 · RECARGA SEM CADASTRO (QR DO TOTEM) ─────────────────────────
-# ---------------------------------------------------------------------------
-
-def _sessao_avulsa(token: str):
+def _ip_local() -> str:
     """
-    Localiza a sessão avulsa de um token, ativa ou já encerrada.
+    IP da máquina na rede local — o endereço que um celular no mesmo Wi-Fi usa.
 
-    Procura em `list_all` e não em `list_active` porque o recibo continua
-    acessível depois do encerramento: o motorista que fechou a aba precisa
-    conseguir voltar pelo mesmo link e ver o acerto da caução.
+    Abre um socket UDP para um endereço externo e lê o endereço local que o
+    sistema escolheu para a rota. Nada chega a ser enviado — em UDP o
+    `connect` só fixa o destino. É por isso que 8.8.8.8 não precisa estar
+    acessível.
+
+    Fonte deste trecho: https://stackoverflow.com/q/24525588 (kramer65 e
+    comunidade), CC BY-SA 3.0. A atribuição cobre estas linhas, não o
+    arquivo — o resto do app.py é código do projeto.
     """
-    dono = avulso.dono_do_token(token)
-    return next((s for s in sm.list_all() if s.owner == dono), None)
-
-
-@app.route("/totem")
-def totem_postos():
-    """
-    Escolha do conector — o que o QR do totem abriria direto no celular.
-
-    No posto físico cada totem tem o seu próprio QR e essa tela não existe:
-    a câmera já cai em /totem/<conector>. Aqui ela serve à demonstração, em
-    que não há totem para apontar a câmera.
-    """
-    _atualizar_carregadores_livres()
-    ocupados = {s.charger_id for s in sm.list_active()}
-
-    disponiveis = {}
-    for posto_id in POSTOS:
-        reservados = reservations.ativas_do_posto(posto_id)
-        disponiveis[posto_id] = [
-            cid for cid in sorted(sm.list_chargers())
-            if cid.startswith(posto_id)
-            and cid not in ocupados
-            and cid not in reservados
-            # O C5 é exclusivo de assinante, e quem chega pelo totem não tem conta.
-            and not _eh_conector_vip(cid)
-        ]
-
-    return render_template("totem.html", postos=POSTOS, disponiveis=disponiveis,
-                           caucao=avulso.CAUCAO_BRL)
-
-
-@app.route("/totem/<charger_id>", methods=["GET", "POST"])
-def totem_liberar(charger_id: str):
-    """
-    Libera um conector para quem não tem conta, mediante caução.
-
-    GET  mostra a tarifa vigente, o valor da caução e pede a placa.
-    POST valida, cria a sessão e devolve o link de acompanhamento.
-
-    A caução é o que substitui o cadastro: sem ela, um conector poderia ser
-    ocupado por horas sem nenhuma garantia de pagamento. Com ela, o pior caso
-    para o posto é a recarga custar menos que o valor retido.
-    """
-    cid = charger_id.upper()
-    posto_id = cid.split("-")[0]
-
-    if posto_id not in POSTOS or cid not in sm.list_chargers():
-        flash("Conector não encontrado.", "error")
-        return redirect(url_for("totem_postos"))
-
-    if _eh_conector_vip(cid):
-        flash("O conector C5 é exclusivo para assinantes. "
-              "Use um conector de C1 a C4 ou entre com sua conta.", "error")
-        return redirect(url_for("totem_postos"))
-
-    # Sem `hora`, a PricingEngine usa o relógio do sistema — que é o certo aqui:
-    # quem chega pelo totem está carregando agora, não simulando um horário.
-    tarifa = pe.calculate(
-        UserType.STANDARD,
-        occupancy_override=_posto_sms[posto_id].occupancy_ratio()
-        if posto_id in _posto_sms else None,
-    )
-
-    if request.method == "GET":
-        return render_template(
-            "totem.html", posto=POSTOS[posto_id], charger_id=cid,
-            tarifa=tarifa, caucao=avulso.CAUCAO_BRL,
-            # (valor, rótulo) — o rótulo sai do billing para não repetir
-            # a grafia em mais um lugar.
-            metodos=[(m, billing.rotulo(m))
-                     for m in (billing.METODO_PIX, billing.METODO_CARTAO)],
-            qr_svg=qr_simulado(f"CGI|TOTEM|{cid}"),
-        )
-
+    import socket
     try:
-        placa = _validar_placa(request.form.get("placa", ""))
-    except ValueError as erro:
-        flash(str(erro), "error")
-        return redirect(url_for("totem_liberar", charger_id=cid))
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "127.0.0.1"
 
-    metodo = billing.normalizar_metodo(request.form.get("metodo", ""))
-    if metodo == billing.METODO_NEXUSCOIN:
-        # NexusCoin debita de uma carteira, e sessão avulsa não tem carteira.
-        flash("Pagamento em NexusCoin exige conta. Escolha Pix ou cartão.", "error")
-        return redirect(url_for("totem_liberar", charger_id=cid))
 
-    dono = avulso.novo_dono()
+# ---------------------------------------------------------------------------
+# ── SPRINT 3 · MODO APP / MODO TOTEM ──────────────────────────────────────
+# ---------------------------------------------------------------------------
+#
+# O mesmo sistema tem duas caras. O **app** é o celular do motorista: login,
+# mapa, reserva, carteira. O **totem** é a tela de toque ao lado de um
+# conector: controla só aquele conector, entra com a conta pelo QR do celular
+# ou libera sem conta mediante caução, e esquece quem usou ao terminar.
+#
+# Numa instalação real seriam dois clientes. Aqui são dois modos do mesmo
+# servidor, alternados por um botão — o que permite demonstrar os dois lados
+# no mesmo navegador.
 
+MODOS: tuple[str, ...] = ("app", "totem")
+COOKIE_MODO: str = "modo"
+COOKIE_TOTEM: str = "totem_cid"
+
+# Telas do totem. No modo totem, qualquer outra rota volta para o início do
+# totem; no modo app, estas voltam para o login.
+ROTAS_TOTEM: set[str] = {
+    "totem_home", "totem_configurar", "totem_entrar", "totem_entrar_estado",
+    "totem_veiculo", "totem_sem_conta", "totem_sinal", "totem_carregando",
+    "totem_encerrar", "totem_recibo", "totem_sair",
+}
+# O fluxo com conta no totem reaproveita estas rotas do app: a regra de
+# encerrar e de pagar é a mesma, só a tela muda.
+ROTAS_TOTEM_EMPRESTADAS: set[str] = {
+    "encerrar_recarga", "pagamento", "pagamento_confirmar",
+}
+# Valem nos dois modos: são o celular do motorista, não a tela do totem.
+ROTAS_DOS_DOIS_MODOS: set[str] = {
+    "static", "trocar_modo", "celular_parear", "avulso_sessao",
+}
+ROTAS_PUBLICAS |= ROTAS_TOTEM | {"trocar_modo", "celular_parear"}
+
+
+def _modo() -> str:
+    """Modo atual deste navegador: "app" (padrão) ou "totem"."""
+    modo = request.cookies.get(COOKIE_MODO, "app")
+    return modo if modo in MODOS else "app"
+
+
+def _conectores_de_totem() -> list[str]:
+    """
+    Conectores que podem ter um totem configurado.
+
+    O C5 fica de fora: é exclusivo de assinante, e um totem nele teria de
+    recusar quem chega sem conta — o caminho que o totem existe para oferecer.
+    """
+    return [cid for cid in sorted(sm.list_chargers()) if not _eh_conector_vip(cid)]
+
+
+def _conector_do_totem() -> str:
+    """O conector que este totem controla."""
+    cid = request.cookies.get(COOKIE_TOTEM, totem.CONECTOR_PADRAO)
+    return cid if cid in _conectores_de_totem() else totem.CONECTOR_PADRAO
+
+
+def _url_na_rede(endpoint: str, **valores) -> str:
+    """
+    URL absoluta com o IP da rede, e não `localhost`.
+
+    É o endereço que vai dentro de um QR: quem o lê é o celular, e `localhost`
+    no celular é o próprio celular.
+    """
+    porta = request.host.rsplit(":", 1)[1] if ":" in request.host else "80"
+    return f"http://{_ip_local()}:{porta}{url_for(endpoint, **valores)}"
+
+
+def _guarda_de_modo():
+    """
+    Mantém cada modo nas suas telas.
+
+    Chamada no início da guarda de acesso, antes da checagem de login: no
+    totem, o mapa não deve nem pedir login — deve voltar para o totem. Sem
+    esta guarda, o totem mostraria o mapa de postos a quem digitasse o
+    endereço, e o totem não é um navegador livre.
+    """
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in ROTAS_DOS_DOIS_MODOS:
+        return None
+    if _modo() == "totem":
+        if endpoint in ROTAS_TOTEM or endpoint in ROTAS_TOTEM_EMPRESTADAS:
+            return None
+        return redirect(url_for("totem_home"))
+    if endpoint in ROTAS_TOTEM:
+        return redirect(url_for("login"))
+    return None
+
+
+@app.context_processor
+def _injetar_modo():
+    """`modo` e `conector_totem` disponíveis em qualquer template."""
+    if request.endpoint is None:
+        return {}
+    return {
+        "modo": _modo(),
+        "conector_totem": _conector_do_totem(),
+        "postos_nomes": {pid: p["nome"].replace("ChargeGrid ", "")
+                         for pid, p in POSTOS.items()},
+    }
+
+
+@app.route("/modo/<modo>")
+def trocar_modo(modo: str):
+    """
+    Alterna entre o modo app e o modo totem.
+
+    Trocar de modo é trocar de aparelho: o totem não pode herdar o login de
+    quem estava no app, nem o app o de quem usou o totem. Por isso a sessão
+    de login é encerrada na troca.
+    """
+    if modo not in MODOS:
+        return redirect(url_for("login"))
+    user_session.clear()
+    resposta = redirect(url_for("totem_home") if modo == "totem" else url_for("login"))
+    resposta.set_cookie(COOKIE_MODO, modo, max_age=60 * 60 * 24 * 365, samesite="Lax")
+    return resposta
+
+
+# ── Início de recarga, compartilhado pelos dois caminhos do totem ──────────
+
+def _iniciar_recarga(cid: str, placa: str, nome: str, tipo: UserType, dono: str):
+    """
+    Cria, aloca e inicia uma recarga no conector.
+
+    A mesma sequência de `processar`: sessão, alocação de potência, tarifa
+    fixada na conexão e os quadros Modbus. Honra a reserva de quem está
+    iniciando e recusa a de outra pessoa.
+
+    Raises:
+        ValueError : conector ocupado ou reservado, carro já carregando em
+                     outro lugar, ou alocação recusada pelo limite físico
+    """
+    posto_id = cid.split("-")[0]
     with _state_lock:
-        if not sm.is_charger_available(cid):
-            flash("Esse conector acabou de ser ocupado. Escolha outro.", "error")
-            return redirect(url_for("totem_postos"))
-
         reserva = reservations.ativa_do_conector(cid)
-        if reserva:
-            flash("Esse conector está reservado por outro motorista.", "error")
-            return redirect(url_for("totem_postos"))
+        if reserva and reserva.usuario != dono:
+            raise ValueError("Este conector está reservado por outro motorista.")
 
         sessao = sm.create_session(
-            charger_id=cid, vehicle_id=placa, user_name="Sem cadastro",
-            user_type=UserType.STANDARD, requested_power_kw=11.0, owner=dono,
+            charger_id=cid, vehicle_id=placa, user_name=nome,
+            user_type=tipo, requested_power_kw=11.0, owner=dono,
         )
         resultado = _get_pm(posto_id).allocate(sessao)
-
         if resultado.rejected:
             sm.finish_session(sessao.session_id, status=SessionStatus.FAULTED)
-            flash(resultado.message, "error")
-            return redirect(url_for("totem_postos"))
+            raise ValueError(resultado.message)
 
+        tarifa = pe.calculate(
+            tipo, occupancy_override=_posto_sms[posto_id].occupancy_ratio())
         sm.start_charging(sessao.session_id, resultado.granted_kw, tarifa.tariff_kwh)
         if resultado.redistributed and resultado.granted_kw < 11.0:
             sm.throttle_session(sessao.session_id, resultado.granted_kw)
@@ -1865,56 +1984,350 @@ def totem_liberar(charger_id: str):
         if resultado.redistributed and resultado.throttle_events:
             mb.on_throttle(sessao, resultado)
 
-    logger.info("Recarga avulsa liberada: %s | %s | caução R$ %.2f | %s",
-                sessao.session_id, cid, avulso.CAUCAO_BRL, metodo)
-    user_session["avulso_metodo"] = metodo
-    return redirect(url_for("avulso_sessao", token=dono.split(":")[1]))
+    if reserva:
+        reservations.consumir(dono, cid)
+    logger.info("Recarga iniciada pelo totem: %s | %s | %s",
+                sessao.session_id, cid, placa)
+    return sessao
 
 
-@app.route("/avulso/<token>")
-def avulso_sessao(token: str):
-    """Acompanhamento da recarga avulsa e, depois de encerrada, o recibo."""
-    sessao = _sessao_avulsa(token)
-    if sessao is None:
-        flash("Recarga não encontrada. O link pode ter expirado com o servidor.",
-              "error")
-        return redirect(url_for("totem_postos"))
+def _dono_no_totem() -> str:
+    """Quem está usando o totem agora: a conta logada ou o token da recarga avulsa."""
+    return user_session.get("usuario") or user_session.get("totem_avulso", "")
 
-    if sessao.is_active:
-        with _state_lock:
-            sm.accrue_energy(sessao)
 
-    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+def _sessao_do_totem():
+    """
+    A recarga deste totem que pertence a quem está nele, se houver.
+
+    Inclui a recarga já encerrada e ainda não paga — é o estado entre apertar
+    "Encerrar" e confirmar o pagamento.
+    """
+    dono = _dono_no_totem()
+    if not dono:
+        return None
+    cid = _conector_do_totem()
+    for sessao in reversed(sm.list_all()):
+        if sessao.charger_id == cid and sessao.owner == dono \
+                and not _sessao_arquivada(sessao.session_id):
+            return sessao
+    return None
+
+
+def _entrar_como(chave: str, *, no_totem: bool = False) -> None:
+    """Grava o login no cookie de sessão — o mesmo que a tela de login faz."""
+    perfil = auth.conta(chave)
+    user_session.clear()
+    user_session["usuario"] = chave
+    user_session["nome"]    = perfil["nome"]
+    user_session["tipo"]    = perfil["tipo"].value
+    user_session["staff"]   = perfil["staff"]
+    if no_totem:
+        user_session["totem"] = True
+    wallet.garantir_conta(chave, perfil["saldo_inicial"])
+
+
+# ── Telas do totem ─────────────────────────────────────────────────────────
+
+@app.route("/totem")
+def totem_home():
+    """Início do totem: entrar com a conta ou usar sem conta."""
+    if _sessao_do_totem() is not None:
+        return redirect(url_for("totem_carregando"))
+
+    cid = _conector_do_totem()
+    ocupado = sm.list_chargers().get(cid) is not None
+    reservado = reservations.ativa_do_conector(cid) is not None
+    posto_id = cid.split("-")[0]
+    tarifa = pe.calculate(UserType.STANDARD,
+                          occupancy_override=_posto_sms[posto_id].occupancy_ratio())
     return render_template(
-        "avulso.html", s=sessao, token=token, cobranca=cobranca,
-        caucao=avulso.CAUCAO_BRL, estorno=avulso.estorno(cobranca.sinal_brl),
-        posto=POSTOS.get(sessao.station_id, {}),
-        metodo_label=billing.rotulo(user_session.get("avulso_metodo",
-                                                     billing.METODO_PIX)),
-        qr_svg=qr_simulado(f"CGI|{sessao.session_id}|{cobranca.total_brl:.2f}"),
+        "totem_home.html", cid=cid, posto=POSTOS[posto_id],
+        ocupado=ocupado, reservado=reservado, tarifa=tarifa,
+        caucao=avulso.CAUCAO_BRL,
     )
 
 
-@app.route("/avulso/<token>/encerrar", methods=["POST"])
-def avulso_encerrar(token: str):
+@app.route("/totem/configurar", methods=["GET", "POST"])
+def totem_configurar():
+    """
+    Escolhe qual conector este totem controla.
+
+    Num posto real é uma configuração de instalação, feita uma vez. Aqui fica
+    a um toque, para a demonstração poder trocar de conector.
+    """
+    if request.method == "POST":
+        cid = request.form.get("charger_id", "")
+        resposta = redirect(url_for("totem_home"))
+        if cid in _conectores_de_totem():
+            user_session.clear()
+            resposta.set_cookie(COOKIE_TOTEM, cid, max_age=60 * 60 * 24 * 365,
+                                samesite="Lax")
+        return resposta
+
+    ocupados = {s.charger_id for s in sm.list_active()}
+    return render_template(
+        "totem_configurar.html",
+        postos=POSTOS,
+        conectores=_conectores_de_totem(),
+        ocupados=ocupados,
+    )
+
+
+@app.route("/totem/entrar")
+def totem_entrar():
+    """
+    Mostra o QR que o celular lê para entrar no totem com a conta.
+
+    Ninguém digita senha num terminal público: a senha fica no celular, e o
+    totem só recebe a confirmação de que a conta autorizou.
+    """
+    cid = _conector_do_totem()
+    token = totem.criar_pareamento(cid)
+    url = _url_na_rede("celular_parear", token=token)
+    return render_template(
+        "totem_entrar.html", token=token, url_celular=url,
+        url_celular_local=url_for("celular_parear", token=token),
+        qr=qr_svg(url, rotulo="QR Code para entrar com a conta pelo celular"),
+        validade=totem.VALIDADE_PAREAMENTO_S,
+    )
+
+
+@app.route("/totem/entrar/<token>/estado")
+def totem_entrar_estado(token: str):
+    """O totem pergunta, a cada segundo e meio, se o celular já confirmou."""
+    usuario = totem.consumir(token)
+    if usuario:
+        _entrar_como(usuario, no_totem=True)
+        return jsonify({"pronto": True, "url": url_for("totem_veiculo")})
+    if totem.pareamento(token) is None:
+        return jsonify({"pronto": False, "expirado": True})
+    return jsonify({"pronto": False})
+
+
+@app.route("/celular/parear/<token>", methods=["GET", "POST"])
+def celular_parear(token: str):
+    """
+    A tela que abre no celular ao ler o QR do totem.
+
+    Na demonstração o celular está sempre logado como a conta
+    `auth.CONTA_DO_CELULAR`. Num app real seria a conta do próprio celular.
+    """
+    p = totem.pareamento(token)
+    chave = auth.CONTA_DO_CELULAR
+    estado = "confirmar"
+    if p is None:
+        estado = "expirado"
+    elif request.method == "POST":
+        estado = "pronto" if totem.confirmar(token, chave) else "expirado"
+    return render_template(
+        "celular_parear.html", estado=estado, conta=auth.conta(chave),
+        charger_id=p["charger_id"] if p else "",
+        posto=POSTOS.get(p["charger_id"].split("-")[0], {}) if p else {},
+    )
+
+
+@app.route("/totem/veiculo", methods=["GET", "POST"])
+def totem_veiculo():
+    """Com a conta no totem: escolhe um carro salvo ou informa outro."""
+    usuario = user_session.get("usuario")
+    if not usuario or not user_session.get("totem"):
+        return redirect(url_for("totem_home"))
+    if _sessao_do_totem() is not None:
+        return redirect(url_for("totem_carregando"))
+
+    cid = _conector_do_totem()
+    if request.method == "POST":
+        try:
+            placa, salvar = _veiculo_do_formulario(usuario)
+            perfil = auth.conta(usuario)
+            _iniciar_recarga(cid, placa, perfil["nome"], perfil["tipo"], usuario)
+            if salvar:
+                veiculos.salvar(usuario, placa, request.form.get("modelo", ""))
+            return redirect(url_for("totem_carregando"))
+        except ValueError as erro:
+            flash(str(erro), "error")
+            return redirect(url_for("totem_veiculo"))
+
+    return render_template(
+        "totem_veiculo.html", cid=cid, carros=_carros_com_estado(usuario),
+        conta=auth.conta(usuario),
+    )
+
+
+@app.route("/totem/sem-conta", methods=["GET", "POST"])
+def totem_sem_conta():
+    """
+    Sem conta: informa a placa e vê o aviso da caução antes de pagar.
+
+    A caução é o que substitui o cadastro. A garantia do pagamento é o valor
+    pré-autorizado, não a identidade de quem carrega — por isso não há senha,
+    CPF nem liberação por alguém do posto.
+    """
+    if _sessao_do_totem() is not None:
+        return redirect(url_for("totem_carregando"))
+    cid = _conector_do_totem()
+
+    if request.method == "POST":
+        try:
+            placa = _validar_placa(request.form.get("placa", ""))
+            em_uso = sm.sessao_ativa_do_veiculo(placa)
+            if em_uso is not None:
+                raise ValueError(f"O veículo {placa} já está carregando em "
+                                 f"{em_uso.charger_id}.")
+            if sm.list_chargers().get(cid) is not None:
+                raise ValueError("Este conector acabou de ser ocupado.")
+        except ValueError as erro:
+            flash(str(erro), "error")
+            return redirect(url_for("totem_sem_conta"))
+        user_session.clear()
+        user_session["totem_pendente"] = {
+            "placa": placa, "modelo": request.form.get("modelo", "").strip()[:40]}
+        return redirect(url_for("totem_sinal"))
+
+    posto_id = cid.split("-")[0]
+    tarifa = pe.calculate(UserType.STANDARD,
+                          occupancy_override=_posto_sms[posto_id].occupancy_ratio())
+    return render_template("totem_sem_conta.html", cid=cid, tarifa=tarifa,
+                           caucao=avulso.CAUCAO_BRL)
+
+
+@app.route("/totem/sem-conta/pagar", methods=["GET", "POST"])
+def totem_sinal():
+    """Pagamento da caução, por cartão (aproximação) ou Pix, e início da recarga."""
+    pendente = user_session.get("totem_pendente")
+    if not pendente:
+        return redirect(url_for("totem_sem_conta"))
+    cid = _conector_do_totem()
+
+    if request.method == "POST":
+        metodo = billing.normalizar_metodo(request.form.get("metodo", ""))
+        if metodo == billing.METODO_NEXUSCOIN:
+            flash("NexusCoin exige conta. Use cartão ou Pix.", "error")
+            return redirect(url_for("totem_sinal"))
+        dono = avulso.novo_dono()
+        try:
+            _iniciar_recarga(cid, pendente["placa"], "Sem cadastro",
+                             UserType.STANDARD, dono)
+        except ValueError as erro:
+            # A caução é autorizada e só capturada se a recarga começar: se o
+            # conector não liberou, não há o que estornar.
+            flash(f"{erro} Nenhum valor foi cobrado.", "error")
+            user_session.pop("totem_pendente", None)
+            return redirect(url_for("totem_home"))
+        user_session.pop("totem_pendente", None)
+        user_session["totem_avulso"] = dono
+        user_session["avulso_metodo"] = metodo
+        return redirect(url_for("totem_carregando"))
+
+    return render_template(
+        "totem_sinal.html", cid=cid, placa=pendente["placa"],
+        caucao=avulso.CAUCAO_BRL,
+        qr_pix=qr_svg(f"CGI|CAUCAO|{cid}|{avulso.CAUCAO_BRL:.2f}",
+                      rotulo="QR Code do Pix da caução"),
+    )
+
+
+@app.route("/totem/carregando")
+def totem_carregando():
+    """A recarga em andamento neste totem, com o botão de encerrar."""
+    sessao = _sessao_do_totem()
+    if sessao is None:
+        return redirect(url_for("totem_home"))
+    if not sessao.is_active:
+        # Encerrada e não paga: só existe no fluxo com conta.
+        return redirect(url_for("pagamento", session_id=sessao.session_id))
+
+    with _state_lock:
+        sm.accrue_energy(sessao)
+
+    eh_avulso = avulso.eh_avulso(sessao.owner)
+    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL if eh_avulso else 0.0)
+    qr_celular = None
+    if eh_avulso:
+        url = _url_na_rede("avulso_sessao", token=sessao.owner.split(":", 1)[1])
+        qr_celular = qr_svg(url, rotulo="QR Code para acompanhar a recarga pelo celular")
+    return render_template(
+        "totem_carregando.html", s=sessao, cobranca=cobranca,
+        eh_avulso=eh_avulso, caucao=avulso.CAUCAO_BRL, qr_celular=qr_celular,
+        conta=auth.conta(sessao.owner) if not eh_avulso else None,
+    )
+
+
+@app.route("/totem/encerrar", methods=["POST"])
+def totem_encerrar():
+    """
+    Encerra a recarga deste totem.
+
+    Com conta, segue para a tela de pagamento — a mesma regra do app, em que
+    o conector só é liberado quando o pagamento é confirmado. Sem conta, a
+    caução já está retida: encerrar e acertar são o mesmo passo.
+    """
+    sessao = _sessao_do_totem()
+    if sessao is None or not sessao.is_active:
+        return redirect(url_for("totem_home"))
+    if avulso.eh_avulso(sessao.owner):
+        _acertar_avulso(sessao, user_session.get("avulso_metodo", billing.METODO_PIX))
+        return redirect(url_for("totem_recibo", session_id=sessao.session_id))
+    return encerrar_recarga(sessao.session_id)
+
+
+@app.route("/totem/recibo/<session_id>")
+def totem_recibo(session_id: str):
+    """Recibo no totem. Some sozinho: o próximo motorista não deve vê-lo."""
+    linha = _sessao_arquivada(session_id)
+    dono = _dono_no_totem()
+    if linha is None or not dono or linha["usuario"] not in (dono, _usuario_do_arquivo(dono)):
+        return redirect(url_for("totem_home"))
+    eh_avulso = avulso.eh_avulso(dono)
+    qr_celular = None
+    if eh_avulso:
+        url = _url_na_rede("avulso_sessao", token=dono.split(":", 1)[1])
+        qr_celular = qr_svg(url, rotulo="QR Code do comprovante no celular")
+    return render_template(
+        "totem_recibo.html", r=dict(linha), eh_avulso=eh_avulso,
+        caucao=avulso.CAUCAO_BRL, estorno=avulso.estorno(linha["sinal_abatido"]),
+        metodo_label=billing.rotulo(linha["metodo_pagto"]), qr_celular=qr_celular,
+        saldo=wallet.saldo(dono) if not eh_avulso else None,
+    )
+
+
+@app.route("/totem/sair", methods=["POST"])
+def totem_sair():
+    """Encerra o uso do totem: apaga o login e volta ao início."""
+    user_session.clear()
+    return redirect(url_for("totem_home"))
+
+
+# ── Recarga sem conta: o bilhete no celular e o acerto da caução ───────────
+
+def _sessao_avulsa(token: str):
+    """
+    Localiza a sessão avulsa de um token, ativa ou já encerrada.
+
+    Procura em `list_all` e não em `list_active` porque o comprovante continua
+    acessível depois do encerramento, pelo mesmo link.
+    """
+    dono = avulso.dono_do_token(token)
+    return next((s for s in sm.list_all() if s.owner == dono), None)
+
+
+def _usuario_do_arquivo(dono: str) -> str:
+    """Como o dono aparece na tabela `sessoes`: conta, ou `avulso:<placa>`."""
+    if not avulso.eh_avulso(dono):
+        return dono
+    sessao = next((s for s in sm.list_all() if s.owner == dono), None)
+    return f"avulso:{sessao.vehicle_id}" if sessao else ""
+
+
+def _acertar_avulso(sessao, metodo: str) -> None:
     """
     Encerra a recarga avulsa e acerta a caução na mesma operação.
 
-    Aqui não existe a tela de pagamento separada do fluxo com conta: o dinheiro
-    já foi pré-autorizado na liberação, então encerrar e acertar são o mesmo
-    passo — e o conector pode voltar para a fila imediatamente, sem o risco de
-    alguém encerrar e sumir sem pagar.
+    Não existe tela de pagamento separada: a caução já foi pré-autorizada,
+    então encerrar e acertar são o mesmo passo — e o conector volta para a
+    fila na hora, sem o risco de alguém encerrar e sumir sem pagar.
     """
-    sessao = _sessao_avulsa(token)
-    if sessao is None:
-        flash("Recarga não encontrada.", "error")
-        return redirect(url_for("totem_postos"))
-
-    if not sessao.is_active:
-        return redirect(url_for("avulso_sessao", token=token))
-
-    metodo = user_session.get("avulso_metodo", billing.METODO_PIX)
-
     with _state_lock:
         sm.finish_session(sessao.session_id, liberar=False)
         mb.on_session_end(sessao)
@@ -1929,12 +2342,37 @@ def avulso_encerrar(token: str):
         if rb:
             mb.on_rebalance(rb)
 
-    devolvido = avulso.estorno(cobranca.sinal_brl)
     logger.info("Recarga avulsa encerrada: %s | consumo R$ %.2f | estorno R$ %.2f "
-                "| a pagar R$ %.2f",
-                sessao.session_id, cobranca.subtotal_brl, devolvido,
-                cobranca.total_brl)
-    return redirect(url_for("avulso_sessao", token=token))
+                "| a pagar R$ %.2f", sessao.session_id, cobranca.subtotal_brl,
+                avulso.estorno(cobranca.sinal_brl), cobranca.total_brl)
+
+
+@app.route("/avulso/<token>")
+def avulso_sessao(token: str):
+    """
+    O bilhete da recarga sem conta, aberto no celular pelo QR do totem.
+
+    Mostra a recarga em andamento e, depois de encerrada, o comprovante com
+    o acerto da caução. Sem conta, é este link que identifica a recarga.
+    """
+    sessao = _sessao_avulsa(token)
+    if sessao is None:
+        return render_template("avulso.html", s=None), 404
+
+    if sessao.is_active:
+        with _state_lock:
+            sm.accrue_energy(sessao)
+
+    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+    linha = _sessao_arquivada(sessao.session_id)
+    metodo = linha["metodo_pagto"] if linha else billing.METODO_PIX
+    return render_template(
+        "avulso.html", s=sessao, token=token, cobranca=cobranca,
+        caucao=avulso.CAUCAO_BRL, estorno=avulso.estorno(cobranca.sinal_brl),
+        posto=POSTOS.get(sessao.station_id, {}),
+        metodo_label=billing.rotulo(metodo),
+    )
+
 
 # ---------------------------------------------------------------------------
 # ── SPRINT 3 · PAINEL DO OPERADOR ─────────────────────────────────────────
@@ -2001,6 +2439,7 @@ def demo_reset():
     db.reset()
     for chave, perfil in auth.CONTAS.items():
         wallet.garantir_conta(chave, perfil["saldo_inicial"])
+    veiculos.garantir_iniciais()
     flash("Estado de demonstração restaurado: saldos, reservas e histórico.",
           "success")
     return redirect(url_for("admin_home"))
@@ -2069,8 +2508,12 @@ def _seed_demo() -> None:
         pm_posto = _get_pm(posto_id)
         try:
             with _state_lock:
+                # Sessões de conta usam o primeiro carro salvo da conta: é assim
+                # que o carro da Amanda aparece como "carregando agora" na tela
+                # de escolha do veículo, em vez de um carro que ela não tem.
+                placa = veiculos.placa_inicial(owner) if owner else _placa_aleatoria()
                 session = sm.create_session(
-                    charger_id, _placa_aleatoria(), nome, tipo, 11.0, owner=owner
+                    charger_id, placa, nome, tipo, 11.0, owner=owner
                 )
                 result = pm_posto.allocate(session)
                 if result.rejected:
@@ -2117,24 +2560,7 @@ if "pytest" not in _sys.modules:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import socket
-
-    # Descobre o IP da máquina na rede para exibir no terminal: abre um
-    # socket UDP para um endereço externo e lê o endereço local que o sistema
-    # escolheu para a rota. Nada chega a ser enviado — em UDP o `connect` só
-    # fixa o destino. É por isso que 8.8.8.8 não precisa estar acessível.
-    #
-    # Fonte deste trecho: https://stackoverflow.com/q/24525588 (kramer65 e
-    # comunidade), CC BY-SA 3.0. A atribuição cobre estas linhas, não o
-    # arquivo — o resto do app.py é código do projeto.
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip_local = s.getsockname()[0]
-        s.close()
-    except Exception:
-        ip_local = "127.0.0.1"
-
+    ip_local = _ip_local()
     porta = 5001
 
     # O banner mostra as contas de demonstração: numa banca, procurar a senha

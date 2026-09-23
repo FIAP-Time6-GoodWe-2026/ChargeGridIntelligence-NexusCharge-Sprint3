@@ -11,6 +11,7 @@ Guarda o que não pode desaparecer quando o processo Flask reinicia:
     transacoes  — extrato (recarga, pagamento, cashback, sinal, taxa, estorno)
     reservas    — reservas de conector com sinal já cobrado
     sessoes     — histórico de sessões encerradas (relatório, CSV, análise)
+    veiculos    — carros salvos em cada conta
 
 `carregar_sessoes()` faz o caminho inverso do arquivamento: reconstrói as
 linhas da tabela `sessoes` como objetos `ChargingSession`, para que o menu de
@@ -98,6 +99,18 @@ CREATE INDEX IF NOT EXISTS idx_reservas_status    ON reservas   (status, usuario
 -- ATIVA por conector, mesmo com dois pedidos simultâneos.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_reservas_ativa
     ON reservas (charger_id) WHERE status = 'ATIVA';
+
+-- Carros salvos por conta. A mesma placa pode estar em duas contas (o carro
+-- da família, o do amigo que alguém carregou uma vez); dentro de uma conta,
+-- não se repete.
+CREATE TABLE IF NOT EXISTS veiculos (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario   TEXT NOT NULL,
+    placa     TEXT NOT NULL,
+    modelo    TEXT NOT NULL DEFAULT '',
+    criado_em TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (usuario, placa)
+);
 """
 
 
@@ -179,7 +192,8 @@ def reset() -> None:
     apenas esvazia — assim quem já tem uma conexão aberta não quebra.
     """
     with _conn() as conn:
-        for tabela in ("transacoes", "carteira", "reservas", "sessoes"):
+        for tabela in ("transacoes", "carteira", "reservas", "sessoes",
+                       "veiculos"):
             conn.execute(f"DELETE FROM {tabela}")
 
 

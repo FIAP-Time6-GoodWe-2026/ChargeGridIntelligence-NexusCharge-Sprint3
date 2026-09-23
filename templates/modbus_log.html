@@ -24,7 +24,7 @@
     text-align: center;
 }
 .summary-val  { font-size: 1.4rem; font-weight: 700; color: var(--cor-texto); }
-.summary-lbl  { font-size: 0.72rem; color: var(--cor-texto-secundario); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+.summary-lbl  { font-size: var(--fs-xs); color: var(--cor-texto-secundario); margin-top: 4px; }
 .summary-val.tx-color { color: var(--cor-info-texto); }
 .summary-val.rx-color { color: var(--cor-livre-texto); }
 
@@ -57,7 +57,8 @@
 .frame-table td {
     padding: 10px 14px;
     border-bottom: 1px solid var(--cor-borda);
-    vertical-align: top;
+    vertical-align: middle;
+    white-space: nowrap;
 }
 .frame-table tr:last-child td { border-bottom: none; }
 .frame-table tr:hover td { background: var(--cor-fundo); }
@@ -75,7 +76,7 @@
     font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 0.72rem;
     color: var(--cor-texto-secundario);
-    word-break: break-all;
+    white-space: nowrap;
 }
 .tid-cell { font-family: monospace; font-size: 0.78rem; color: var(--cor-texto-secundario); }
 .reg-cell { font-family: monospace; font-weight: 600; }
@@ -170,7 +171,7 @@
             </span>
         </div>
         {% if frames %}
-        <div style="overflow-x:auto;">
+        <div class="tabela-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table class="frame-table">
             <thead>
                 <tr>

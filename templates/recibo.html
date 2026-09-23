@@ -51,8 +51,10 @@
     color: var(--cor-livre-texto);
     font-size: var(--fs-md);
     font-weight: var(--fw-semibold);
+    text-align: center;
 }
-.cashback-faixa .nc-simbolo { width: 20px; height: 20px; }
+.cashback-faixa .nc-simbolo { width: 22px; height: 22px; flex-shrink: 0; }
+.cashback-faixa span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
 .cashback-faixa .valor { font-variant-numeric: tabular-nums; }
 
 .detalhes { margin-top: var(--sp-5); }
@@ -82,6 +84,29 @@
 
 @media (max-width: 640px) {
     .recibo-acoes { grid-template-columns: 1fr; }
+}
+
+.recibo-pdf {
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    width: 100%; min-height: 44px; margin-top: var(--sp-3);
+    background: none; border: 0; cursor: pointer;
+    font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-semibold);
+    color: var(--cor-texto-secundario);
+    border-radius: var(--r-md);
+}
+.recibo-pdf:hover { color: var(--cor-texto); }
+.recibo-pdf:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.recibo-pdf svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+/* Salvar em PDF = imprimir pelo navegador. Só o comprovante vai para o papel. */
+@media print {
+    @page { margin: 16mm; }
+    body { background: #fff !important; }
+    .header, .faixa-pendencia, .recibo-acoes, .recibo-pdf, .toast-container { display: none !important; }
+    .container { padding: 0 !important; max-width: none !important; }
+    .card { box-shadow: none !important; border: 1px solid #ccc !important; }
+    .recibo-selo, .recibo-selo svg { animation: none !important; }
+    .recibo-selo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 {% endblock %}
@@ -176,6 +201,12 @@
                 <span class="rotulo-btn">Voltar ao mapa</span>
             </a>
         </div>
+        <button type="button" class="recibo-pdf" onclick="window.print()">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Salvar comprovante em PDF
+        </button>
     </div>
 </div>
 {% endblock %}

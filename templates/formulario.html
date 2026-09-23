@@ -70,6 +70,54 @@ input:not(:focus):hover, select:not(:focus):hover {
 }
 
 .input-hint { font-size: 0.8rem; color: var(--cor-texto-secundario); margin-top: 6px; display: block; }
+
+/* ── Escolha do carro ───────────────────────────────────────────────────── */
+.carros { display: grid; gap: 10px; margin-top: 4px; }
+.carro {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    border: 1.5px solid var(--cor-input-border);
+    border-radius: 10px;
+    background: var(--cor-input-bg);
+    cursor: pointer;
+    transition: border-color .18s, background-color .18s;
+}
+.carro:hover { border-color: var(--cor-texto-secundario); }
+.carro:has(input:checked) {
+    border-color: var(--cor-primaria);
+    background: rgba(192, 0, 0, .05);
+}
+.carro input[type="radio"] { width: 18px; height: 18px; accent-color: var(--cor-primaria); flex-shrink: 0; }
+.carro-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.carro-modelo { font-weight: 600; color: var(--cor-texto); font-size: .95rem; }
+.carro-placa {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: .82rem; letter-spacing: .06em; color: var(--cor-texto-secundario);
+}
+.carro-estado {
+    font-size: .74rem; font-weight: 600; white-space: nowrap;
+    padding: 4px 10px; border-radius: 999px;
+    color: var(--cor-sucesso-texto, #047857);
+    background: var(--cor-sucesso-bg, rgba(16, 185, 129, .12));
+}
+.carro.ocupado { cursor: not-allowed; opacity: .62; }
+.carro.ocupado:hover { border-color: var(--cor-input-border); }
+.carro.ocupado .carro-estado { color: var(--cor-vip-texto); background: var(--cor-vip-bg); }
+
+.carro-novo-campos { display: none; margin-top: 14px; padding-left: 4px; }
+.carros:has(#veiculo-novo:checked) + .carro-novo-campos { display: block; }
+.carro-novo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .carro-novo-grid { grid-template-columns: 1fr; } }
+.salvar-carro {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-top: 12px; font-weight: 500; font-size: .88rem; cursor: pointer;
+}
+.salvar-carro input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--cor-primaria); }
+.salvar-carro small { display: block; color: var(--cor-texto-secundario); font-weight: 400; margin-top: 2px; }
+
+.label-grupo { display: block; margin-bottom: 10px; font-weight: 600; color: var(--cor-texto); font-size: .9rem; }
+.opcional { font-weight: 400; color: var(--cor-texto-secundario); }
+
 .input-hint-vip { color: var(--cor-vip-texto); font-weight: 600; }
 
 .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -609,7 +657,7 @@ input:not(:focus):hover, select:not(:focus):hover {
         <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:14px 16px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;font-size:0.85rem;color:var(--cor-texto);">
             <svg viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2" width="22" height="22" stroke-linecap="round" style="flex-shrink:0;margin-top:1px;"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <div>
-                <strong style="display:block;margin-bottom:3px;">⚡ Controle dinâmico de carga ativo neste posto</strong>
+                <strong style="display:block;margin-bottom:3px;">Controle dinâmico de carga ativo neste posto</strong>
                 Este posto está operando com alta demanda. A potência da sua sessão poderá ser <strong>redistribuída automaticamente</strong> para proteger o disjuntor principal (GoodWe GW11K-HCA-20 · registrador Modbus 10025). A tarifa aplicada pode incluir o <strong>multiplicador de demanda (+30%)</strong> por causa da ocupação atual da rede.
             </div>
         </div>
@@ -639,15 +687,59 @@ input:not(:focus):hover, select:not(:focus):hover {
             </div>
 
             <div class="form-group">
-                <label for="placa">Placa do Veículo <span style="color:var(--cor-primaria-texto);">*</span></label>
-                <input type="text" id="placa" name="placa"
-                       placeholder="Ex: ABC-1234"
-                       maxlength="8"
-                       pattern="[A-Za-z]{3}-?[0-9A-Za-z]{4}"
-                       required
-                       style="text-transform:uppercase;"
-                       oninput="this.value=this.value.toUpperCase()">
-                <span class="input-hint">Identificação do veículo elétrico para o registro da sessão</span>
+                <span class="label-grupo" id="rotulo-carro">Qual carro vai carregar?</span>
+
+                <div class="carros" role="radiogroup" aria-labelledby="rotulo-carro">
+                    {% set primeiro_livre = (carros | selectattr('carregando_em', 'none') | first) %}
+                    {% for carro in carros %}
+                    <label class="carro {% if carro.carregando_em %}ocupado{% endif %}">
+                        <input type="radio" name="veiculo" value="{{ carro.placa }}"
+                               {% if carro.carregando_em %}disabled
+                               {% elif primeiro_livre and carro.placa == primeiro_livre.placa %}checked{% endif %}>
+                        <span class="carro-info">
+                            <span class="carro-modelo">{{ carro.modelo or 'Carro sem nome' }}</span>
+                            <span class="carro-placa">{{ carro.placa[:3] }}-{{ carro.placa[3:] }}</span>
+                        </span>
+                        {% if carro.carregando_em %}
+                        <span class="carro-estado">Carregando em {{ carro.carregando_em }}</span>
+                        {% endif %}
+                    </label>
+                    {% endfor %}
+
+                    <label class="carro">
+                        <input type="radio" name="veiculo" value="novo" id="veiculo-novo"
+                               {% if not primeiro_livre %}checked{% endif %}>
+                        <span class="carro-info">
+                            <span class="carro-modelo">Outro carro</span>
+                            <span class="carro-placa">Informar placa agora</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="carro-novo-campos">
+                    <div class="carro-novo-grid">
+                        <div>
+                            <label for="placa">Placa</label>
+                            <input type="text" id="placa" name="placa"
+                                   placeholder="ABC1D23" maxlength="8"
+                                   autocapitalize="characters" spellcheck="false"
+                                   style="text-transform:uppercase;"
+                                   oninput="this.value=this.value.toUpperCase()">
+                        </div>
+                        <div>
+                            <label for="modelo">Modelo <span class="opcional">(opcional)</span></label>
+                            <input type="text" id="modelo" name="modelo" maxlength="40"
+                                   placeholder="BYD Dolphin">
+                        </div>
+                    </div>
+                    <label class="salvar-carro">
+                        <input type="checkbox" name="salvar_veiculo" value="1" checked>
+                        <span>
+                            Salvar este carro na minha conta
+                            <small>Desmarque se for o carro de outra pessoa.</small>
+                        </span>
+                    </label>
+                </div>
             </div>
 
             {# ── Container 2 — dados de simulação ────────────────────────────
@@ -1179,5 +1271,19 @@ sessionForm.addEventListener('submit', function (e) {
 // ====================================================================
 atualizarPreview();
 syncQuickCharge(parseInt(duracaoInput.value, 10));
+</script>
+
+<script>
+(function () {
+    var placa = document.getElementById('placa');
+    function atualizar() {
+        var novo = document.getElementById('veiculo-novo');
+        if (placa && novo) placa.required = novo.checked;
+    }
+    document.querySelectorAll('input[name="veiculo"]').forEach(function (r) {
+        r.addEventListener('change', atualizar);
+    });
+    atualizar();
+})();
 </script>
 {% endblock %}

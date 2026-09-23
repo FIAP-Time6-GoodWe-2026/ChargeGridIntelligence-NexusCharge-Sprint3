@@ -22,6 +22,7 @@ diferente do produto:
                                     tarifa cheia sem desconto e pagamento por
                                     Pix ou cartão sem passar pela carteira
     mylon  (10.000 NC, operador)  → painel, throttle e Modbus, sem esbarrar em saldo
+    luiz   (150 NC, assinante)    → a conta que entra no totem pelo QR do celular
 """
 
 from __future__ import annotations
@@ -77,7 +78,21 @@ CONTAS: dict[str, Conta] = {
         "cartao_final": "1234",
         "cartao_bandeira": "Mastercard",
     },
+    # A conta do celular que lê o QR do totem na demonstração: é ela que entra
+    # no totem quando o QR de "Entrar com minha conta" é escaneado.
+    "luiz": {
+        "nome": "Luiz Otávio",
+        "tipo": UserType.SUBSCRIBER,
+        "staff": False,
+        "saldo_inicial": 150.0,
+        "cartao_final": "4821",
+        "cartao_bandeira": "Visa",
+    },
 }
+
+# Conta que o celular confirma ao ler o QR do totem. Num app real seria a
+# conta logada no celular de quem escaneia; na demonstração é sempre esta.
+CONTA_DO_CELULAR: str = "luiz"
 
 
 def autenticar(login: str, senha: str) -> Optional[str]:

@@ -118,7 +118,29 @@
 }
 
 @media (max-width: 900px) {
-    .carteira-grid { grid-template-columns: 1fr; }
+    .carteira-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Extrato no celular: cada movimentação vira uma linha de duas alturas
+   (descrição e valor em cima, data e tipo embaixo) em vez de 4 colunas
+   espremidas. */
+@media (max-width: 640px) {
+    .extrato thead { display: none; }
+    .extrato, .extrato tbody { display: block; }
+    .extrato tr {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas: "desc valor" "data tipo";
+        gap: 2px var(--sp-3);
+        padding: var(--sp-3) 0;
+        border-bottom: 1px solid var(--cor-borda);
+    }
+    .extrato tr:last-child { border-bottom: 0; }
+    .extrato td { display: block; padding: 0; border: 0; }
+    .extrato .t-desc  { grid-area: desc; font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+    .extrato .t-valor { grid-area: valor; align-self: center; }
+    .extrato .t-data  { grid-area: data; font-size: var(--fs-xs); }
+    .extrato .t-tipo  { grid-area: tipo; justify-self: end; }
 }
 </style>
 {% endblock %}
@@ -242,7 +264,7 @@
 
             {% if extrato %}
             <div class="tabela-scroll">
-                <table class="tabela">
+                <table class="tabela extrato">
                     <thead>
                         <tr>
                             <th scope="col">Data</th>
@@ -254,14 +276,14 @@
                     <tbody>
                         {% for t in extrato %}
                         <tr>
-                            <td style="white-space:nowrap; color:var(--cor-texto-secundario)">
+                            <td class="t-data" style="white-space:nowrap; color:var(--cor-texto-secundario)">
                                 {{ t.criado_em | datahora_br }}
                             </td>
-                            <td>
+                            <td class="t-tipo">
                                 <span class="tipo-badge {{ t.tipo | lower }}">{{ t.tipo | capitalize }}</span>
                             </td>
-                            <td>{{ t.descricao }}</td>
-                            <td class="valor {{ 'positivo' if t.valor > 0 else 'negativo' }}">
+                            <td class="t-desc">{{ t.descricao }}</td>
+                            <td class="t-valor valor {{ 'positivo' if t.valor > 0 else 'negativo' }}">
                                 {{ '+' if t.valor > 0 else '−' }} {{ (t.valor if t.valor > 0 else -t.valor) | brl }}
                             </td>
                         </tr>

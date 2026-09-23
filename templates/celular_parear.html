@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{# =============================================================================
+   A tela que abre no celular ao ler o QR do totem. É o app no celular, não o
+   totem: layout de telefone, sem a moldura do totem.
+   ============================================================================= #}
+{% block title %}Entrar no totem — NexusCharge{% endblock %}
+
+{% block extra_css %}
+<style>
+.cp {
+    max-width: 440px; min-height: 100vh; margin: 0 auto;
+    display: flex; flex-direction: column;
+    padding: var(--sp-6) var(--sp-5) var(--sp-5);
+    gap: var(--sp-5);
+}
+.cp-marca { display: flex; align-items: center; gap: var(--sp-2);
+    font-weight: var(--fw-bold); font-size: var(--fs-lg); color: var(--cor-texto); }
+.cp-marca svg { width: 32px; height: 32px; }
+.cp-titulo { font-size: var(--fs-2xl); font-weight: var(--fw-bold); line-height: var(--lh-tight);
+    color: var(--cor-texto); text-wrap: balance; }
+.cp-sub { font-size: var(--fs-md); color: var(--cor-texto-secundario); margin-top: var(--sp-2); }
+.cp-conta {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    background: var(--cor-card); border: 1px solid var(--cor-borda);
+    border-radius: var(--r-lg); box-shadow: var(--sombra-sm);
+}
+.cp-avatar { width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--cor-primaria); color: #fff; font-weight: var(--fw-bold); font-size: var(--fs-lg); }
+.cp-conta strong { display: block; font-size: var(--fs-lg); color: var(--cor-texto); }
+.cp-conta span { font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
+.cp-acoes { margin-top: auto; display: grid; gap: var(--sp-3); }
+.cp-btn { display: flex; align-items: center; justify-content: center; min-height: 56px;
+    border-radius: var(--r-md); font: inherit; font-size: var(--fs-lg); font-weight: var(--fw-bold);
+    border: 0; cursor: pointer; text-decoration: none; width: 100%; }
+.cp-btn.primario { background: var(--cor-primaria); color: #fff; }
+.cp-btn.primario:hover { background: var(--cor-primaria-dark); }
+.cp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cp-resultado { text-align: center; padding-top: var(--sp-7); }
+.cp-resultado svg { width: 88px; height: 88px; margin: 0 auto var(--sp-4); display: block; }
+.cp-ok circle { fill: var(--cor-livre); }
+.cp-ok path, .cp-erro path { stroke: #fff; stroke-width: 7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cp-erro circle { fill: var(--cor-ocupado); }
+.cp-nota { font-size: var(--fs-sm); color: var(--cor-texto-secundario); text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="cp">
+    <div class="cp-marca">
+        <svg aria-hidden="true"><use href="#marca-nexus"/></svg>
+        NexusCharge
+    </div>
+
+    {% if estado == 'confirmar' %}
+    <div>
+        <h1 class="cp-titulo">Entrar no totem do {{ charger_id.split('-')[1] }}?</h1>
+        <p class="cp-sub">{{ posto.nome }} · {{ posto.endereco }}</p>
+    </div>
+
+    <div class="cp-conta">
+        <span class="cp-avatar" aria-hidden="true">{{ conta.nome.split()[0][0] }}{{ conta.nome.split()[-1][0] }}</span>
+        <span>
+            <strong>{{ conta.nome }}</strong>
+            <span>{{ conta.tipo.value | tipo_pt }} · a conta deste celular</span>
+        </span>
+    </div>
+
+    <p class="cp-nota">O totem sai da sua conta sozinho quando a recarga terminar.</p>
+
+    <form method="POST" class="cp-acoes">
+        <button type="submit" class="cp-btn primario">Confirmar e entrar</button>
+    </form>
+
+    {% elif estado == 'pronto' %}
+    <div class="cp-resultado">
+        <svg class="cp-ok" viewBox="0 0 88 88" aria-hidden="true"><circle cx="44" cy="44" r="42"/><path d="M26 45 l12 12 l24 -26"/></svg>
+        <h1 class="cp-titulo">Pronto</h1>
+        <p class="cp-sub">Continue no totem: escolha o carro e inicie a recarga.</p>
+    </div>
+
+    {% else %}
+    <div class="cp-resultado">
+        <svg class="cp-erro" viewBox="0 0 88 88" aria-hidden="true"><circle cx="44" cy="44" r="42"/><path d="M30 30 l28 28 M58 30 l-28 28"/></svg>
+        <h1 class="cp-titulo">Este código expirou</h1>
+        <p class="cp-sub">No totem, toque em "Entrar com conta existente" para gerar um código novo.</p>
+    </div>
+    {% endif %}
+</main>
+{% endblock %}

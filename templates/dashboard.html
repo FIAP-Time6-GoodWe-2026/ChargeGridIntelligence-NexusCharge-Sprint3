@@ -34,14 +34,12 @@
     gap: 10px;
 }
 .card-title {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: var(--cor-texto);
     display: flex;
     align-items: center;
     gap: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 .card-title svg { width: 16px; height: 16px; stroke: var(--cor-primaria-texto); fill: none; }
 .card-body { padding: 20px; }
@@ -65,7 +63,7 @@
     line-height: 1.1;
 }
 .metric-unit  { font-size: 0.75rem; font-weight: 400; color: var(--cor-texto-secundario); }
-.metric-label { font-size: 0.72rem; color: var(--cor-texto-secundario); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.metric-label { font-size: var(--fs-xs); color: var(--cor-texto-secundario); margin-top: 4px; }
 .metric-value.danger  { color: var(--cor-ocupado-texto); }
 .metric-value.warning { color: var(--cor-vip-texto); }
 .metric-value.success { color: var(--cor-livre-texto); }
@@ -148,8 +146,7 @@
 }
 .posto-decisoes-titulo {
     display: flex; align-items: center; gap: 6px;
-    font-size: 0.72rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.04em;
+    font-size: var(--fs-xs); font-weight: 700;
     color: var(--cor-texto-secundario);
     margin-bottom: 8px;
 }
@@ -467,8 +464,8 @@
 }
 [data-theme="dark"] .throttle-badge-sm { background: rgba(245,158,11,0.22); color: #FCD34D; }
 
-@media (max-width: 900px) { .postos-grid { grid-template-columns: 1fr; } }
 @media (max-width: 1100px) { .postos-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px)  { .postos-grid { grid-template-columns: 1fr; } }
 /* ── RESPONSIVO ─────────────────────────────────────────── */
 @media (max-width: 1100px) {
     .dashboard-grid { grid-template-columns: 1fr 1fr; }
@@ -498,6 +495,43 @@
     .header-nav-dash .live-indicator { display: none; }
     .header-content { flex-wrap: wrap; gap: var(--sp-2); }
     .header-brand h1 { font-size: var(--fs-lg); }
+
+    /* Cards de sessão empilhados no celular: nome e placa sem cortes,
+       potência e custo embaixo e botão Encerrar em largura total */
+    .session-card {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 12px 14px;
+    }
+    .session-info {
+        min-width: 0;
+        width: 100%;
+    }
+    .session-name {
+        font-size: 0.95rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+    }
+    .session-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        border-top: 1px solid var(--cor-borda);
+        padding-top: 8px;
+        gap: 6px;
+        text-align: left;
+    }
+    .session-actions form {
+        width: 100%;
+    }
+    .btn-encerrar {
+        width: 100%;
+        text-align: center;
+        padding: 8px 12px;
+    }
 }
 </style>
 {% endblock %}

@@ -1,0 +1,24 @@
+{# =============================================================================
+   Alternância Modo App / Modo Totem — fica ao lado do botão de tema.
+
+   Não usa a classe .theme-toggle de propósito: o ThemeManager liga um clique
+   de troca de tema em todo elemento com essa classe.
+   ============================================================================= #}
+{% if modo == 'totem' %}
+<a class="modo-toggle" href="{{ url_for('trocar_modo', modo='app') }}"
+   title="Mudar para o modo app" aria-label="Mudar para o modo app">
+    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="2" width="12" height="20" rx="2.5"/>
+        <line x1="11" y1="18" x2="13" y2="18"/>
+    </svg>
+</a>
+{% else %}
+<a class="modo-toggle" href="{{ url_for('trocar_modo', modo='totem') }}"
+   title="Mudar para o modo totem" aria-label="Mudar para o modo totem">
+    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="2" width="12" height="14" rx="2"/>
+        <line x1="12" y1="16" x2="12" y2="21"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+    </svg>
+</a>
+{% endif %}

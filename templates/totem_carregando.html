@@ -1,0 +1,74 @@
+{% extends "totem_base.html" %}
+{% block title %}Recarregando — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.tr-cabeca { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.tr-carro { font-size: var(--fs-lg); color: var(--cor-texto-secundario); margin-top: var(--sp-2); }
+.tr-celular { display: flex; align-items: center; gap: var(--sp-5); }
+.tr-celular .tt-qr { margin: 0; flex-shrink: 0; }
+{% endblock %}
+
+{% block totem %}
+<div>
+    <div class="tr-cabeca">
+        <h1 class="tt-titulo">Recarregando</h1>
+        <span class="tt-estado ativo">{% if s.status.value == 'THROTTLED' %}Potência ajustada{% else %}Em andamento{% endif %}</span>
+    </div>
+    <p class="tr-carro">
+        Carro <span class="tt-placa">{{ s.vehicle_id[:3] }}-{{ s.vehicle_id[3:] }}</span>
+        {% if conta %} · {{ conta.nome }}{% endif %}
+    </p>
+</div>
+
+<div class="tt-numeros" aria-live="polite">
+    <div class="tt-numero"><span>Energia</span><strong>{{ '%.2f' | format(s.energy_kwh) | replace('.', ',') }}<small>kWh</small></strong></div>
+    <div class="tt-numero"><span>Potência</span><strong>{{ '%.1f' | format(s.allocated_power_kw) | replace('.', ',') }}<small>kW</small></strong></div>
+    <div class="tt-numero"><span>Tempo</span><strong>{{ '%.0f' | format(s.duration_minutes) }}<small>min</small></strong></div>
+    <div class="tt-numero"><span>Até agora</span><strong><small>R$</small> {{ cobranca.subtotal_brl | brl }}</strong></div>
+</div>
+
+<div class="tt-painel">
+    <div class="tt-linha"><span>Tarifa fixada na conexão</span><strong>R$ {{ s.tariff_kwh | brl(4) }} / kWh</strong></div>
+    {% if eh_avulso %}
+    <div class="tt-linha"><span>Sinal retido</span><strong>R$ {{ caucao | brl }}</strong></div>
+    {% endif %}
+    {% if s.status.value == 'THROTTLED' %}
+    <p class="tt-nota" style="margin-top: var(--sp-4)">
+        O posto está com muitos carros ao mesmo tempo. A potência deste
+        conector foi reduzida para não ultrapassar o limite da instalação e
+        volta ao máximo quando outro carro sair.
+    </p>
+    {% endif %}
+</div>
+
+{% if eh_avulso and qr_celular %}
+<div class="tr-celular tt-painel">
+    <div class="tt-qr pequeno">{{ qr_celular | safe }}</div>
+    <p class="tt-nota"><strong>Acompanhe pelo celular.</strong> Leia o código para ver a recarga e, no fim, o comprovante com a devolução do sinal.</p>
+</div>
+{% endif %}
+
+<div class="tt-acoes">
+    <form method="POST" action="{{ url_for('totem_encerrar') }}">
+        <button type="submit" class="tt-btn primario">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5"/>
+            </svg>
+            Encerrar carregamento
+        </button>
+    </form>
+    {% if not eh_avulso %}
+    <form method="POST" action="{{ url_for('totem_sair') }}">
+        <button type="submit" class="tt-btn discreto">Sair e continuar carregando</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // O totem fica parado nesta tela durante toda a recarga: recarrega os
+    // números a cada 5 s, sem depender de ninguém tocar na tela.
+    setTimeout(function () { window.location.reload(); }, 5000);
+</script>
+{% endblock %}

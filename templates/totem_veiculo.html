@@ -1,0 +1,91 @@
+{% extends "totem_base.html" %}
+{% block title %}Escolha o carro — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.tv-novo { display: none; gap: var(--sp-4); }
+.tt-opcoes:has(#veiculo-novo:checked) ~ .tv-novo { display: grid; }
+.tv-sessao { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+    font-size: var(--fs-md); color: var(--cor-texto-secundario); }
+.tv-estado { font-size: var(--fs-sm); font-weight: var(--fw-semibold); white-space: nowrap;
+    color: var(--cor-vip-texto); }
+{% endblock %}
+
+{% block totem %}
+<div>
+    <h1 class="tt-titulo">Olá, {{ conta.nome.split()[0] }}. Qual carro vai carregar?</h1>
+</div>
+
+<form method="POST" action="{{ url_for('totem_veiculo') }}" id="formVeiculo" style="display:contents">
+    {% set primeiro_livre = (carros | selectattr('carregando_em', 'none') | first) %}
+    <div class="tt-opcoes" role="radiogroup" aria-label="Carro">
+        {% for carro in carros %}
+        <label class="tt-opcao {% if carro.carregando_em %}bloqueada{% endif %}">
+            <input type="radio" name="veiculo" value="{{ carro.placa }}"
+                   {% if carro.carregando_em %}disabled
+                   {% elif primeiro_livre and carro.placa == primeiro_livre.placa %}checked{% endif %}>
+            <span class="tt-opcao-info">
+                <strong>{{ carro.modelo or 'Carro sem nome' }}</strong>
+                <span class="tt-placa">{{ carro.placa[:3] }}-{{ carro.placa[3:] }}</span>
+            </span>
+            {% if carro.carregando_em %}
+            <span class="tv-estado">Carregando em {{ carro.carregando_em }}</span>
+            {% endif %}
+        </label>
+        {% endfor %}
+        <label class="tt-opcao">
+            <input type="radio" name="veiculo" value="novo" id="veiculo-novo"
+                   {% if not primeiro_livre %}checked{% endif %}>
+            <span class="tt-opcao-info">
+                <strong>Outro carro</strong>
+                <span>Informar a placa agora</span>
+            </span>
+        </label>
+    </div>
+
+    <div class="tv-novo">
+        <div class="tt-campo">
+            <label for="placa">Placa</label>
+            <input type="text" id="placa" name="placa" class="placa" maxlength="8"
+                   placeholder="ABC1D23" autocapitalize="characters" spellcheck="false"
+                   autocomplete="off">
+        </div>
+        <div class="tt-campo">
+            <label for="modelo">Modelo <span class="tt-opcional">(opcional)</span></label>
+            <input type="text" id="modelo" name="modelo" maxlength="40" placeholder="BYD Dolphin"
+                   autocomplete="off">
+        </div>
+        <label class="tt-marcar">
+            <input type="checkbox" name="salvar_veiculo" value="1" checked>
+            <span>Salvar este carro na minha conta
+                <small>Desmarque se for o carro de outra pessoa.</small></span>
+        </label>
+    </div>
+
+    <div class="tt-acoes">
+        <button type="submit" class="tt-btn primario">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Iniciar recarga
+        </button>
+    </div>
+</form>
+
+<form method="POST" action="{{ url_for('totem_sair') }}">
+    <button type="submit" class="tt-btn discreto">Sair da minha conta</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var placa = document.getElementById('placa');
+    function atualizar() { placa.required = document.getElementById('veiculo-novo').checked; }
+    document.querySelectorAll('input[name="veiculo"]').forEach(function (r) {
+        r.addEventListener('change', atualizar);
+    });
+    placa.addEventListener('input', function () { placa.value = placa.value.toUpperCase(); });
+    atualizar();
+})();
+</script>
+{% endblock %}
