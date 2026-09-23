@@ -2467,3 +2467,120 @@ class TestRecargaSemCadastro:
                          "avulso_sessao", "avulso_encerrar"):
             assert endpoint in app_module.ROTAS_PUBLICAS, endpoint
             assert endpoint not in app_module.ROTAS_STAFF, endpoint
+
+
+# ---------------------------------------------------------------------------
+# Regras que a interface escondia mas o backend aceitava
+# ---------------------------------------------------------------------------
+
+class TestRegrasDeAcessoPorRota:
+    """
+    Três casos em que esconder o botão não bastava: a rota aceitava a operação
+    de quem chamasse direto. Cada teste falha se a checagem sair do backend.
+    """
+
+    def _saldo(self, cliente, valor="100"):
+        cliente.post("/carteira/recarregar", data={"valor": valor, "metodo": "PIX"})
+
+    def test_nao_assinante_nao_reserva_o_conector_vip(self, tmp_path):
+        """
+        Allan é corporativo. Reservar o C5 debitava o sinal de R$ 10,00 e criava
+        uma reserva que o início de sessão recusaria depois — o dinheiro ficava
+        preso até virar taxa por não comparecimento.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "allan", "senha": "1234"})
+            self._saldo(c)
+            saldo_antes = app_module.wallet.saldo("allan")
+            resposta = c.post("/api/reservar",
+                              json={"posto_id": "P2", "carregador_id": "C5"})
+            assert resposta.status_code == 400
+            assert "assinantes" in resposta.get_json()["erro"]
+            assert app_module.wallet.saldo("allan") == saldo_antes, \
+                "o sinal não pode ser debitado numa reserva recusada"
+
+    def test_assinante_continua_reservando_o_conector_vip(self, tmp_path):
+        """A checagem não pode fechar a porta para quem tem direito."""
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            resposta = c.post("/api/reservar",
+                              json={"posto_id": "P2", "carregador_id": "C5"})
+            assert resposta.status_code == 200, resposta.get_data(as_text=True)
+            assert resposta.get_json()["ok"] is True
+
+    def test_formulario_do_vip_recusa_antes_de_preencher(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "allan", "senha": "1234"})
+            resposta = c.get("/posto/P2/carregador/C5", follow_redirects=True)
+            assert "exclusivo para assinantes" in resposta.get_data(as_text=True)
+
+    def test_card_do_vip_nao_oferece_reserva_a_quem_nao_pode(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "allan", "senha": "1234"})
+            assert "btn-reservar-C5" not in c.get("/posto/P2").get_data(as_text=True)
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            assert "btn-reservar-C5" in c.get("/posto/P2").get_data(as_text=True)
+
+    def _sessao_encerrada_de(self, app_module, usuario, charger="P2-C3"):
+        """Cria e encerra uma recarga em nome de `usuario`, devolvendo o id."""
+        posto, conector = charger.split("-")
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": usuario, "senha": "1234"})
+            c.post("/sessao", data={
+                "posto_id": posto, "carregador_id": conector, "placa": "AMD1A11",
+                "hora": "14", "minuto": "0", "tempo": "30", "tipo_usuario": "A"})
+            sessao = next(s for s in app_module.sm.list_active()
+                          if s.charger_id == charger)
+            c.post(f"/sessao/{sessao.session_id}/encerrar")
+            return sessao.session_id
+
+    def test_pagamento_recusa_sessao_de_outro_usuario(self, tmp_path):
+        """
+        O GET de /pagamento já recusava; o POST de confirmação não. Dava para
+        pagar a recarga alheia com a própria carteira, e a sessão ia para o
+        histórico com o nome errado.
+        """
+        app_module = _app_limpo(tmp_path)
+        sid = self._sessao_encerrada_de(app_module, "amanda")
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "allan", "senha": "1234"})
+            self._saldo(c)
+            saldo_antes = app_module.wallet.saldo("allan")
+            resposta = c.post(f"/pagamento/{sid}/confirmar",
+                              data={"metodo": "NEXUSCOIN"}, follow_redirects=False)
+            assert "/recibo/" not in resposta.headers.get("Location", "")
+            assert app_module.wallet.saldo("allan") == saldo_antes
+        import db
+        assert db.query_one("SELECT 1 FROM sessoes WHERE session_id = ?",
+                            (sid,)) is None, "a sessão não podia ter sido arquivada"
+
+    def test_dono_continua_pagando_a_propria_recarga(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        sid = self._sessao_encerrada_de(app_module, "amanda")
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            resposta = c.post(f"/pagamento/{sid}/confirmar",
+                              data={"metodo": "NEXUSCOIN"})
+            assert "/recibo/" in resposta.headers.get("Location", "")
+
+    def test_sessao_avulsa_nao_e_arquivada_pelo_fluxo_com_conta(self, tmp_path):
+        """
+        A sessão avulsa tem um token como dono. Se o fluxo com conta pudesse
+        arquivá-la, a caução nunca seria acertada: quem devolve o troco é o
+        encerramento do totem.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.post("/totem/P2-C1", data={"placa": "ABC1D23", "metodo": "PIX"})
+            sessao = next(s for s in app_module.sm.list_active()
+                          if s.charger_id == "P2-C1")
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+            resposta = c.post(f"/pagamento/{sessao.session_id}/confirmar",
+                              data={"metodo": "NEXUSCOIN"})
+            assert "/recibo/" not in resposta.headers.get("Location", "")

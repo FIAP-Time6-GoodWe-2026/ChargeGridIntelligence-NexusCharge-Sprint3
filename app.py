@@ -609,6 +609,7 @@ def posto(posto_id: str):
         limite_posto_kw=LIMITE_POR_POSTO_KW,
         sinal_reserva=wallet.SINAL_RESERVA_BRL,
         duracao_reserva=reservations.DURACAO_MIN,
+        eh_assinante=auth.conta(user_session["usuario"])["tipo"] == UserType.SUBSCRIBER,
     )
 
 
@@ -628,6 +629,14 @@ def formulario(posto_id: str, carregador_id: str):
 
     if chargers[cid_full] is not None:
         flash(f"Carregador {carregador_id} está ocupado!", "error")
+        return redirect(url_for("posto", posto_id=posto_id))
+
+    # Recusa aqui, e não depois de o formulário inteiro ser preenchido: quem
+    # não é assinante só descobria que o C5 não era para ele ao enviar.
+    if (_eh_conector_vip(cid_full)
+            and auth.conta(user_session["usuario"])["tipo"] != UserType.SUBSCRIBER):
+        flash("O conector C5 é exclusivo para assinantes. "
+              "Use um conector de C1 a C4.", "error")
         return redirect(url_for("posto", posto_id=posto_id))
 
     return render_template(
@@ -1184,10 +1193,63 @@ def modbus_log():
     )
 
 
+_suites_cache: list[dict] | None = None
+
+
+def _suites_de_teste() -> list[dict]:
+    """
+    Lê do pytest as classes de teste e quantos casos cada uma tem.
+
+    Antes esta lista era escrita à mão no template, com o total fixo em 61 —
+    um número que envelheceu junto com a suíte e passou a mostrar ao operador
+    uma contagem que não batia com nada. Agora a tela pergunta ao pytest.
+
+    O resultado é guardado em memória: a coleta leva cerca de um segundo e o
+    conjunto de testes não muda enquanto o servidor está de pé.
+    """
+    global _suites_cache
+    if _suites_cache is not None:
+        return _suites_cache
+
+    import pathlib
+    import re
+    import subprocess
+    import sys
+
+    try:
+        saida = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "--collect-only"],
+            cwd=pathlib.Path(__file__).parent, capture_output=True,
+            text=True, timeout=120,
+        ).stdout
+    except (subprocess.SubprocessError, OSError) as erro:
+        # A tela continua utilizável sem a lista: o botão "Todos" sempre roda.
+        logger.warning("Não consegui coletar as suítes de teste: %s", erro)
+        _suites_cache = []
+        return _suites_cache
+
+    contagem: dict[str, int] = {}
+    for linha in saida.splitlines():
+        achado = re.match(r"test_chargegrid\.py::(\w+)::", linha)
+        if achado:
+            contagem[achado.group(1)] = contagem.get(achado.group(1), 0) + 1
+
+    def rotulo(classe: str) -> str:
+        """TestPowerManagerAlocacao → 'Power Manager Alocação'."""
+        return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", classe[4:]) or classe
+
+    _suites_cache = [{"classe": c, "rotulo": rotulo(c), "casos": n}
+                     for c, n in sorted(contagem.items(),
+                                        key=lambda kv: (-kv[1], kv[0]))]
+    return _suites_cache
+
+
 @app.route("/testes")
 def testes():
     """Página de execução de testes automatizados no navegador."""
-    return render_template("testes.html")
+    suites = _suites_de_teste()
+    return render_template("testes.html", suites=suites,
+                           total_casos=sum(s["casos"] for s in suites))
 
 
 @app.route("/api/testes/run", methods=["POST"])
@@ -1337,6 +1399,16 @@ def api_reservar():
             raise ValueError("Conector inválido.")
         if not sm.is_charger_available(charger_id):
             raise ValueError("Este conector já está em uso.")
+        # O C5 só aceita assinante. Sem esta checagem a reserva era criada e o
+        # sinal debitado, mas /sessao recusava o início depois — o dinheiro
+        # ficava preso numa reserva impossível de usar, e virava taxa por
+        # não comparecimento quando os 15 minutos venciam.
+        if (_eh_conector_vip(charger_id)
+                and auth.conta(usuario)["tipo"] != UserType.SUBSCRIBER):
+            raise ValueError(
+                "O conector C5 é exclusivo para assinantes. "
+                "Reserve um conector de C1 a C4."
+            )
 
         reserva = reservations.criar(usuario, charger_id)
         return jsonify({
@@ -1580,6 +1652,15 @@ def pagamento_confirmar(session_id: str):
         return redirect(url_for("mapa"))
 
     usuario = user_session["usuario"]
+
+    # A mesma guarda do GET desta tela. Sem ela o POST aceitava pagar a recarga
+    # de outra pessoa: a carteira de quem chamava era debitada e a sessão ia
+    # para o histórico com o nome errado. Também é o que impede uma sessão
+    # avulsa, cujo dono é um token, de ser arquivada por um usuário logado
+    # fora do fluxo do totem, que é quem devolve a caução.
+    if sessao.owner and sessao.owner != usuario and not user_session.get("staff"):
+        flash("Esta recarga pertence a outro usuário.", "error")
+        return redirect(url_for("mapa"))
 
     # Idempotência: sessão já paga vai direto ao recibo, sem nova cobrança.
     if _sessao_arquivada(session_id):

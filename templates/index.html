@@ -782,6 +782,10 @@
                             {% endif %}
                         </a>
 
+                        {# O C5 só aceita assinante: oferecer a reserva a quem
+                           não pode usar o conector é cobrar sinal por uma vaga
+                           que o sistema vai recusar na hora de iniciar. #}
+                        {% if carregador.tipo != 'assinante' or eh_assinante %}
                         <button class="btn-reservar"
                                 id="btn-reservar-{{ carregador.id }}"
                                 data-carregador-id="{{ carregador.id }}"
@@ -794,6 +798,7 @@
                             </svg>
                             Reservar · 15 min
                         </button>
+                        {% endif %}
                     </div>
 
                     {# Estado RESERVADO renderizado por JS logo após confirmar,

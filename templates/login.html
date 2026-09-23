@@ -130,7 +130,9 @@ body { animation: none; }            /* login não precisa de animação de entr
 }
 .login-tema .theme-toggle svg { stroke: var(--cor-texto-secundario); }
 
-.login-card { width: 100%; max-width: 420px; }
+/* Largo o bastante para os dois caminhos lado a lado a partir de 900px;
+   abaixo disso eles empilham e a largura sobra. */
+    .login-card { width: 100%; max-width: 680px; }
 
 .login-titulo {
     font-size: var(--fs-2xl);
@@ -239,56 +241,80 @@ body { animation: none; }            /* login não precisa de animação de entr
     .login-regua, .login-assinatura, .login-pilares { display: none; }
     .login-form-lado { padding: var(--sp-6) var(--sp-4) var(--sp-7); }
 }
-    /* ── Recarga sem cadastro ─────────────────────────────────────────── */
-    .sem-cadastro {
+    /* ── Os dois caminhos de entrada ──────────────────────────────────── */
+    /* Entrar e carregar sem cadastro são alternativas, não um principal e um
+       secundário: quem chega pelo totem não tem conta e não vai criar uma ali. */
+    .caminhos {
+        display: grid;
+        gap: var(--sp-4);
         margin-top: var(--sp-5);
-        padding-top: var(--sp-5);
-        border-top: 1px solid var(--cor-borda);
     }
-    .sem-cadastro-titulo {
-        font-size: var(--fs-2xs);
+    @media (min-width: 900px) {
+        .caminhos { grid-template-columns: 1fr 1fr; align-items: stretch; }
+    }
+
+    .caminho {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--cor-borda);
+        border-radius: var(--r-lg);
+        padding: var(--sp-5);
+        background: var(--cor-card);
+    }
+    .caminho-titulo {
+        font-size: var(--fs-md);
         font-weight: var(--fw-semibold);
-        letter-spacing: .06em;
-        text-transform: uppercase;
+        line-height: var(--lh-tight);
+        margin-bottom: 4px;
+    }
+    .caminho-sub {
+        font-size: var(--fs-sm);
         color: var(--cor-texto-secundario);
-        text-align: center;
+        line-height: var(--lh-normal);
         margin-bottom: var(--sp-4);
     }
-    .sem-cadastro-corpo {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-4);
-    }
-    .sem-cadastro-qr {
-        flex: 0 0 auto;
-        width: 96px;
-        height: 96px;
+    .caminho form, .caminho-corpo { margin-top: auto; }
+
+    .qr-totem {
+        width: 132px; height: 132px;
+        margin: 0 auto var(--sp-4);
         color: var(--cor-texto);
     }
-    .sem-cadastro-qr svg { width: 100%; height: 100%; display: block; }
-    .sem-cadastro-texto { flex: 1; min-width: 0; }
-    .sem-cadastro-texto p {
-        font-size: var(--fs-sm);
-        color: var(--cor-texto-secundario);
-        margin: 0 0 var(--sp-3);
-        line-height: var(--lh-normal);
+    .qr-totem svg { width: 100%; height: 100%; display: block; }
+
+    .btn-bloco.secundario {
+        background: transparent;
+        color: var(--cor-primaria);
+        border: 1.5px solid var(--cor-primaria);
     }
-    .sem-cadastro-link {
-        display: inline-flex;
+    .btn-bloco.secundario:hover:not(:disabled) { background: rgba(192, 0, 0, .08); }
+
+    /* ── Contas de demonstração, recolhidas ───────────────────────────── */
+    .demo-recolhido {
+        margin-top: var(--sp-5);
+        border-top: 1px solid var(--cor-borda);
+        padding-top: var(--sp-4);
+    }
+    .demo-recolhido > summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
         align-items: center;
+        justify-content: center;
         gap: var(--sp-2);
         font-size: var(--fs-sm);
-        font-weight: var(--fw-semibold);
-        text-decoration: none;
-        color: var(--cor-primaria);
-        border: 1px solid var(--cor-primaria);
+        color: var(--cor-texto-secundario);
+        padding: 6px;
         border-radius: var(--r-md);
-        padding: 9px 14px;
     }
-    .sem-cadastro-link:hover { background: rgba(192, 0, 0, .08); }
-    @media (max-width: 420px) {
-        .sem-cadastro-corpo { flex-direction: column; text-align: center; }
+    .demo-recolhido > summary::-webkit-details-marker { display: none; }
+    .demo-recolhido > summary:hover { color: var(--cor-texto); }
+    .demo-recolhido > summary svg {
+        width: 14px; height: 14px;
+        transition: transform var(--dur-rapida, .18s) ease;
     }
+    .demo-recolhido[open] > summary svg { transform: rotate(180deg); }
+    .demo-recolhido[open] > summary { margin-bottom: var(--sp-3); }    }
 </style>
 {% endblock %}
 
@@ -366,38 +392,81 @@ body { animation: none; }            /* login não precisa de animação de entr
         </div>
 
         <div class="login-card">
-            <h2 class="login-titulo">Entrar</h2>
-            <p class="login-sub">Acesse sua conta para encontrar um posto e iniciar uma recarga.</p>
+            <h2 class="login-titulo">Comece a carregar</h2>
+            <p class="login-sub">
+                Entre na sua conta ou use o QR Code do totem, sem cadastro.
+            </p>
 
-            <form method="POST" action="{{ url_for('login') }}" id="loginForm">
-                <input type="hidden" name="next" value="{{ next }}">
+            <div class="caminhos">
 
-                <div class="campo">
-                    <label for="usuario">Usuário</label>
-                    <input type="text" id="usuario" name="usuario"
-                           autocomplete="username" autocapitalize="none"
-                           spellcheck="false" required autofocus
-                           placeholder="amanda">
-                </div>
+                {# ── Caminho 1: conta ──────────────────────────────────── #}
+                <section class="caminho">
+                    <div class="caminho-titulo">Entrar na minha conta</div>
+                    <p class="caminho-sub">
+                        Saldo NexusCoin, 10% de cashback, reserva de conector e
+                        histórico das suas recargas.
+                    </p>
 
-                <div class="campo">
-                    <label for="senha">Senha</label>
-                    <input type="password" id="senha" name="senha"
-                           autocomplete="current-password" required
-                           placeholder="••••">
-                </div>
+                    <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+                        <input type="hidden" name="next" value="{{ next }}">
 
-                <button type="submit" class="btn-bloco primario">
-                    <span class="rotulo-btn">Entrar</span>
+                        <div class="campo">
+                            <label for="usuario">Usuário</label>
+                            <input type="text" id="usuario" name="usuario"
+                                   autocomplete="username" autocapitalize="none"
+                                   spellcheck="false" required
+                                   placeholder="seu usuário">
+                        </div>
+
+                        <div class="campo">
+                            <label for="senha">Senha</label>
+                            <input type="password" id="senha" name="senha"
+                                   autocomplete="current-password" required
+                                   placeholder="••••">
+                        </div>
+
+                        <button type="submit" class="btn-bloco primario">
+                            <span class="rotulo-btn">Entrar</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                        </button>
+                    </form>
+                </section>
+
+                {# ── Caminho 2: totem ──────────────────────────────────── #}
+                <section class="caminho">
+                    <div class="caminho-titulo">Carregar sem cadastro</div>
+                    <p class="caminho-sub">
+                        Aponte a câmera para o QR Code do totem, informe a placa e
+                        autorize uma caução de R$ {{ caucao | brl }}. No fim, o que
+                        você não usou volta para você.
+                    </p>
+
+                    <div class="caminho-corpo">
+                        <div class="qr-totem" aria-hidden="true">{{ qr_totem | safe }}</div>
+                        <a href="{{ url_for('totem_postos') }}" class="btn-bloco secundario">
+                            <span class="rotulo-btn">Abrir sem cadastro</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                        </a>
+                    </div>
+                </section>
+
+            </div>
+
+            <details class="demo-recolhido">
+                <summary>
+                    Contas de demonstração
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                         aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9"/>
                     </svg>
-                </button>
-            </form>
-
-            <div class="demo-bloco">
-                <div class="demo-titulo">Contas de demonstração</div>
+                </summary>
 
                 <div class="demo-lista">
                     {% for chave, c in contas.items() %}
@@ -423,31 +492,7 @@ body { animation: none; }            /* login não precisa de animação de entr
                     Clique em uma conta para preencher o formulário.
                     Senha de todas: <code>{{ senha_demo }}</code>
                 </p>
-            </div>
-
-            <div class="sem-cadastro">
-                <div class="sem-cadastro-titulo">Ou carregue sem cadastro</div>
-                <div class="sem-cadastro-corpo">
-                    <div class="sem-cadastro-qr" aria-hidden="true">{{ qr_totem | safe }}</div>
-                    <div class="sem-cadastro-texto">
-                        <p>
-                            Aponte a câmera para o QR Code do totem, informe a placa
-                            e autorize a caução de R$ {{ caucao | brl }}. No fim, o que
-                            você não usou volta para você.
-                        </p>
-                        <a href="{{ url_for('totem_postos') }}" class="sem-cadastro-link">
-                            Simular leitura do QR
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" stroke-linecap="round"
-                                 stroke-linejoin="round" aria-hidden="true"
-                                 style="width:16px;height:16px">
-                                <line x1="5" y1="12" x2="19" y2="12"/>
-                                <polyline points="12 5 19 12 12 19"/>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-            </div>
+            </details>
         </div>
     </main>
 </div>

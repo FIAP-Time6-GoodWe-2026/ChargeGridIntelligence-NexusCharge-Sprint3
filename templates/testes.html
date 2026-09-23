@@ -35,7 +35,6 @@
 .suite-btn.active { border-color: var(--cor-primaria); background: rgba(192,0,0,0.04); }
 .suite-name  { font-weight: 700; font-size: 0.88rem; margin-bottom: 2px; }
 .suite-count { font-size: 0.72rem; color: var(--cor-texto-secundario); }
-.suite-icon  { font-size: 1.2rem; margin-bottom: 6px; }
 
 /* ── PAINEL DE CONTROLE ── */
 .control-bar {
@@ -173,7 +172,7 @@
             </a>
             <div>
                 <h1>Testes Automatizados</h1>
-                <div class="header-subtitle">ChargeGrid Intelligence · pytest · 61 casos</div>
+                <div class="header-subtitle">ChargeGrid Intelligence · pytest · {{ total_casos }} casos</div>
             </div>
         </div>
         {% include "partials/_header_actions.html" %}
@@ -189,50 +188,24 @@
     </a>
 
     <h2 class="page-title">Suítes de Teste</h2>
-    <p class="page-sub">Selecione uma suíte ou execute todos os 61 casos de uma vez. Os testes rodam via pytest no servidor e o resultado aparece aqui em tempo real.</p>
+    <p class="page-sub">Selecione uma suíte ou execute os {{ total_casos }} casos de uma vez. Os testes rodam via pytest no servidor e o resultado aparece aqui em tempo real.</p>
 
     <!-- ── SELEÇÃO DE SUÍTE ── -->
+    <!-- As suítes e as contagens vêm do pytest, não de uma lista escrita à
+         mão: o total fixo que existia aqui envelheceu junto com os testes. -->
     <div class="suites-grid">
-        <button class="suite-btn active" data-suite="" onclick="selectSuite(this, '', 'Todos os testes (61)')">
-            <div class="suite-icon">🧪</div>
+        <button class="suite-btn active" data-suite=""
+                onclick="selectSuite(this, '', 'Todos os testes ({{ total_casos }})')">
             <div class="suite-name">Todos</div>
-            <div class="suite-count">61 casos</div>
+            <div class="suite-count">{{ total_casos }} casos</div>
         </button>
-        <button class="suite-btn" data-suite="TestPricingEngine" onclick="selectSuite(this, 'TestPricingEngine', 'PricingEngine (13)')">
-            <div class="suite-icon">💰</div>
-            <div class="suite-name">PricingEngine</div>
-            <div class="suite-count">13 casos — tarifação dinâmica</div>
+        {% for s in suites %}
+        <button class="suite-btn" data-suite="{{ s.classe }}"
+                onclick="selectSuite(this, '{{ s.classe }}', '{{ s.rotulo }} ({{ s.casos }})')">
+            <div class="suite-name">{{ s.rotulo }}</div>
+            <div class="suite-count">{{ s.casos }} caso{{ 's' if s.casos != 1 }}</div>
         </button>
-        <button class="suite-btn" data-suite="TestPowerManagerAlocacao" onclick="selectSuite(this, 'TestPowerManagerAlocacao', 'PowerManager · Alocação (6)')">
-            <div class="suite-icon">⚡</div>
-            <div class="suite-name">PowerManager · Alocação</div>
-            <div class="suite-count">6 casos — 4 cenários + limites</div>
-        </button>
-        <button class="suite-btn" data-suite="TestPowerManagerRebalance" onclick="selectSuite(this, 'TestPowerManagerRebalance', 'PowerManager · Rebalance (4)')">
-            <div class="suite-icon">🔄</div>
-            <div class="suite-name">PowerManager · Rebalance</div>
-            <div class="suite-count">4 casos — restauração de potência</div>
-        </button>
-        <button class="suite-btn" data-suite="TestSessionManager" onclick="selectSuite(this, 'TestSessionManager', 'SessionManager (8)')">
-            <div class="suite-icon">🚗</div>
-            <div class="suite-name">SessionManager</div>
-            <div class="suite-count">8 casos — ciclo de sessão</div>
-        </button>
-        <button class="suite-btn" data-suite="TestFlaskRoutes" onclick="selectSuite(this, 'TestFlaskRoutes', 'Flask Routes (8)')">
-            <div class="suite-icon">🌐</div>
-            <div class="suite-name">Flask Routes</div>
-            <div class="suite-count">8 casos — rotas e integração</div>
-        </button>
-        <button class="suite-btn" data-suite="TestRegressaoBugs or TestAuditoriaB24aB35 or TestAuditoriaModbusFlask or TestRevisaoR1aR5" onclick="selectSuite(this, 'TestRegressaoBugs or TestAuditoriaB24aB35 or TestAuditoriaModbusFlask or TestRevisaoR1aR5', 'Regressão e Auditoria (18)')">
-            <div class="suite-icon">🛡️</div>
-            <div class="suite-name">Regressão e Auditoria</div>
-            <div class="suite-count">18 casos — não-reincidência de bugs</div>
-        </button>
-        <button class="suite-btn" data-suite="TestConectorVIP" onclick="selectSuite(this, 'TestConectorVIP', 'Conector VIP (4)')">
-            <div class="suite-icon">⭐</div>
-            <div class="suite-name">Conector VIP</div>
-            <div class="suite-count">4 casos — exclusividade do C5</div>
-        </button>
+        {% endfor %}
     </div>
 
     <!-- ── BARRA DE CONTROLE ── -->
@@ -242,7 +215,7 @@
             Executar
         </button>
         <button class="btn-clear" onclick="clearOutput()">Limpar</button>
-        <span class="selected-label" id="selectedLabel">Todos os testes (61)</span>
+        <span class="selected-label" id="selectedLabel">Todos os testes ({{ total_casos }})</span>
     </div>
 
     <!-- ── BARRA DE PROGRESSO ── -->
