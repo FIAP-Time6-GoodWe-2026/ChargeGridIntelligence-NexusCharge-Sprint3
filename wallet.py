@@ -19,6 +19,9 @@ Regras do produto:
 
 from __future__ import annotations
 
+import sqlite3
+from typing import Optional
+
 import db
 
 # ---------------------------------------------------------------------------
@@ -75,15 +78,17 @@ def saldo(usuario: str) -> float:
     return round(linha["saldo"], 2) if linha else 0.0
 
 
-def creditar(usuario: str, valor: float, tipo: str, descricao: str = "") -> float:
+def creditar(usuario: str, valor: float, tipo: str, descricao: str = "",
+             conn: Optional[sqlite3.Connection] = None) -> float:
     """
-    Credita NexusCoin e registra a transação.
+    Credita NexusCoin e registra a transação de forma atômica.
 
     Args:
         usuario   : chave da conta
         valor     : quantia positiva a creditar
         tipo      : um dos TIPOS (RECARGA, CASHBACK, ESTORNO…)
         descricao : texto exibido no extrato
+        conn      : conexão SQLite opcional para transação compartilhada
 
     Returns:
         O novo saldo.
@@ -95,24 +100,36 @@ def creditar(usuario: str, valor: float, tipo: str, descricao: str = "") -> floa
     if valor <= 0:
         raise ValueError("O valor a creditar deve ser positivo.")
 
-    db.execute("UPDATE carteira SET saldo = ROUND(saldo + ?, 2) WHERE usuario = ?",
-               (valor, usuario))
-    db.execute(
-        "INSERT INTO transacoes (usuario, tipo, valor, descricao) VALUES (?,?,?,?)",
-        (usuario, tipo, valor, descricao),
-    )
-    return saldo(usuario)
+    def _executar(c: sqlite3.Connection) -> float:
+        c.execute("UPDATE carteira SET saldo = ROUND(saldo + ?, 2) WHERE usuario = ?",
+                  (valor, usuario))
+        c.execute(
+            "INSERT INTO transacoes (usuario, tipo, valor, descricao) VALUES (?,?,?,?)",
+            (usuario, tipo, valor, descricao),
+        )
+        linha = c.execute("SELECT saldo FROM carteira WHERE usuario = ?", (usuario,)).fetchone()
+        return round(float(linha["saldo"]), 2) if linha else 0.0
+
+    if conn is not None:
+        return _executar(conn)
+    with db.transaction() as c:
+        return _executar(c)
 
 
-def debitar(usuario: str, valor: float, tipo: str, descricao: str = "") -> float:
+def debitar(usuario: str, valor: float, tipo: str, descricao: str = "",
+            conn: Optional[sqlite3.Connection] = None) -> float:
     """
-    Debita NexusCoin e registra a transação.
+    Debita NexusCoin e registra a transação de forma atômica.
+
+    Usa atualização condicional (saldo >= valor) no SQLite para eliminar
+    qualquer condição de corrida (TOCTOU) e impedir saldos negativos.
 
     Args:
         usuario   : chave da conta
         valor     : quantia positiva a debitar
         tipo      : um dos TIPOS (PAGAMENTO, SINAL…)
         descricao : texto exibido no extrato
+        conn      : conexão SQLite opcional para transação compartilhada
 
     Returns:
         O novo saldo.
@@ -125,17 +142,27 @@ def debitar(usuario: str, valor: float, tipo: str, descricao: str = "") -> float
     if valor <= 0:
         raise ValueError("O valor a debitar deve ser positivo.")
 
-    atual = saldo(usuario)
-    if atual < valor:
-        raise SaldoInsuficiente(atual, valor)
+    def _executar(c: sqlite3.Connection) -> float:
+        cur = c.execute(
+            "UPDATE carteira SET saldo = ROUND(saldo - ?, 2) WHERE usuario = ? AND saldo >= ?",
+            (valor, usuario, valor),
+        )
+        if cur.rowcount == 0:
+            linha = c.execute("SELECT saldo FROM carteira WHERE usuario = ?", (usuario,)).fetchone()
+            saldo_atual = round(float(linha["saldo"]), 2) if linha else 0.0
+            raise SaldoInsuficiente(saldo_atual, valor)
 
-    db.execute("UPDATE carteira SET saldo = ROUND(saldo - ?, 2) WHERE usuario = ?",
-               (valor, usuario))
-    db.execute(
-        "INSERT INTO transacoes (usuario, tipo, valor, descricao) VALUES (?,?,?,?)",
-        (usuario, tipo, -valor, descricao),
-    )
-    return saldo(usuario)
+        c.execute(
+            "INSERT INTO transacoes (usuario, tipo, valor, descricao) VALUES (?,?,?,?)",
+            (usuario, tipo, -valor, descricao),
+        )
+        linha = c.execute("SELECT saldo FROM carteira WHERE usuario = ?", (usuario,)).fetchone()
+        return round(float(linha["saldo"]), 2) if linha else 0.0
+
+    if conn is not None:
+        return _executar(conn)
+    with db.transaction() as c:
+        return _executar(c)
 
 
 def pode_pagar(usuario: str, valor: float) -> bool:

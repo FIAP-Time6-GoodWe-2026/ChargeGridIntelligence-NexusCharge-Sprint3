@@ -12,24 +12,26 @@
     <div class="tt-linha"><span>Tarifa</span><strong>R$ {{ cobranca.tarifa_kwh | brl(4) }} / kWh</strong></div>
     <div class="tt-linha"><span>Tempo</span><strong>{{ cobranca.duracao_min | brl(0) }} min</strong></div>
     {% if cobranca.sinal_brl > 0 %}
-    <div class="tt-linha"><span>Sinal da reserva</span><strong>− R$ {{ cobranca.sinal_brl | brl }}</strong></div>
+    <div class="tt-linha"><span>{% if eh_avulso %}Sinal pré-autorizado{% else %}Sinal da reserva{% endif %}</span><strong>− R$ {{ cobranca.sinal_brl | brl }}</strong></div>
     {% endif %}
-    <div class="tt-linha total"><span>Total</span><strong>R$ {{ cobranca.total_brl | brl }}</strong></div>
+    <div class="tt-linha total"><span>{% if eh_avulso and cobranca.total_brl > 0 %}Excedente a pagar{% else %}Total{% endif %}</span><strong>R$ {{ cobranca.total_brl | brl }}</strong></div>
 </div>
 
 <form method="POST" action="{{ url_for('pagamento_confirmar', session_id=sessao.session_id) }}"
       data-pagamento-totem data-valor="R$ {{ cobranca.total_brl | brl }}" style="display:contents">
     <div class="tt-opcoes" role="radiogroup" aria-label="Forma de pagamento">
-        <label class="tt-opcao {% if not tem_saldo and not cobranca.gratuito %}bloqueada{% endif %}">
+        <label class="tt-opcao {% if (not tem_saldo and not cobranca.gratuito) or eh_avulso %}bloqueada{% endif %}">
             <input type="radio" name="metodo" value="NEXUSCOIN"
-                   {% if tem_saldo or cobranca.gratuito %}checked{% else %}disabled{% endif %}>
+                   {% if not eh_avulso and (tem_saldo or cobranca.gratuito) %}checked{% else %}disabled{% endif %}>
             <span class="tt-opcao-icone" aria-hidden="true">
                 <svg viewBox="0 0 100 100" style="stroke:none"><use href="#moeda-nexus"/></svg>
             </span>
             <span class="tt-opcao-info">
                 <strong>NexusCoin</strong>
                 <span>
-                    {% if tem_saldo or cobranca.gratuito %}
+                    {% if eh_avulso %}
+                    Disponível apenas para contas cadastradas
+                    {% elif tem_saldo or cobranca.gratuito %}
                     Saldo {{ saldo | brl }} NC{% if cobranca.cashback_nc > 0 %} · volta {{ cobranca.cashback_nc | brl }} NC de cashback{% endif %}
                     {% else %}
                     Saldo insuficiente ({{ saldo | brl }} NC)

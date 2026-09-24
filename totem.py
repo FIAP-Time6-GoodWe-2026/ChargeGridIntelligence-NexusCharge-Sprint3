@@ -36,6 +36,8 @@ VALIDADE_PAREAMENTO_S: int = 180
 # ponytail: pareamentos em memória, com um lock global. Suficiente para um
 # processo só; com vários workers precisaria ir para o banco ou para um cache
 # compartilhado, porque o celular e o totem podem cair em processos diferentes.
+MAX_CONFIRMADOS: int = 500
+
 _pareamentos: Dict[str, dict] = {}
 _pareamentos_confirmados: Dict[str, dict] = {}
 _trava = threading.Lock()
@@ -46,6 +48,14 @@ def _limpar_vencidos(agora: float) -> None:
         del _pareamentos[token]
     for token in [t for t, p in _pareamentos_confirmados.items() if p["expira"] < agora]:
         del _pareamentos_confirmados[token]
+    if len(_pareamentos_confirmados) > MAX_CONFIRMADOS:
+        ordenados = sorted(
+            _pareamentos_confirmados.items(),
+            key=lambda item: item[1].get("confirmado_em", 0),
+        )
+        excesso = len(_pareamentos_confirmados) - MAX_CONFIRMADOS
+        for t, _ in ordenados[:excesso]:
+            del _pareamentos_confirmados[t]
 
 
 def criar_pareamento(charger_id: str) -> str:

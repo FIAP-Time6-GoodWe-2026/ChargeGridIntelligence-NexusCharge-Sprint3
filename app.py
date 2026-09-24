@@ -78,10 +78,13 @@ app = Flask(__name__)
 # #13 — SECRET_KEY lida de variável de ambiente.
 # Em desenvolvimento, usa o fallback hardcoded.
 # Em produção: export CHARGEGRID_SECRET_KEY="<valor-aleatorio-seguro>"
-app.config["SECRET_KEY"] = os.environ.get(
-    "CHARGEGRID_SECRET_KEY",
-    "chargegrid-intelligence-fiap-goodwe-2026-dev-only",
-)
+_secret = os.environ.get("CHARGEGRID_SECRET_KEY")
+if not _secret:
+    logging.getLogger(__name__).debug(
+        "CHARGEGRID_SECRET_KEY não definida no ambiente; usando chave de desenvolvimento."
+    )
+    _secret = "chargegrid-intelligence-fiap-goodwe-2026-dev-only"
+app.config["SECRET_KEY"] = _secret
 
 
 # Tradução dos tipos de usuário para exibição em português.
@@ -323,6 +326,33 @@ def _validar_hora(raw: str) -> int:
     return hora
 
 
+def _validar_valor_brl(raw: str) -> float:
+    """
+    Normaliza e valida valores monetários digitados pelo usuário.
+
+    Suporta os formatos:
+        - Inteiro simples: '50' -> 50.0
+        - Decimal com ponto: '50.00' ou '10.5' -> 50.0, 10.5
+        - Decimal com vírgula: '50,00' ou '10,5' -> 50.0, 10.5
+        - Milhar brasileiro: '1.250,50' -> 1250.5
+        - Milhar internacional: '1,250.50' -> 1250.5
+
+    Raises:
+        ValueError: caso o valor seja vazio ou contenha caracteres inválidos.
+    """
+    texto = (raw or "").strip()
+    if not texto:
+        raise ValueError("O valor deve ser informado.")
+    if "," in texto and "." in texto:
+        if texto.rfind(",") > texto.rfind("."):
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", "")
+    elif "," in texto:
+        texto = texto.replace(",", ".")
+    return round(float(texto), 2)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -410,6 +440,12 @@ def _guarda_de_acesso():
         return None
 
     if "usuario" not in user_session:
+        if _modo() == "totem" and endpoint in ("pagamento", "pagamento_confirmar"):
+            sid = request.view_args.get("session_id") if request.view_args else None
+            s = sm.get_session(sid) if sid else None
+            dono_avulso = user_session.get("totem_avulso")
+            if s and avulso.eh_avulso(s.owner) and s.owner == dono_avulso:
+                return None
         return redirect(url_for("login", next=request.full_path.rstrip("?")))
 
     if endpoint in ROTAS_STAFF and not user_session.get("staff"):
@@ -982,7 +1018,7 @@ def dashboard_nova_sessao():
 
         # #B30 — valida a hora de início (0–23); vazio = hora atual
         hora      = _validar_hora(hora_str)
-        potencia  = float(pot_str) if pot_str else 11.0
+        potencia  = float(pot_str.replace(",", ".")) if pot_str else 11.0
         user_type = USER_TYPE_MAP.get(tipo_str, UserType.STANDARD)
         # Extrai o posto_id do charger_id (ex: "P1-C3" → "P1")
         posto_id  = charger_id.split("-")[0] if "-" in charger_id else "P1"
@@ -1404,8 +1440,7 @@ def carteira_recarregar():
     destino = _destino_seguro(request.form.get("next")) \
         if request.form.get("next") else url_for("carteira")
     try:
-        bruto  = request.form.get("valor", "0").replace(".", "").replace(",", ".")
-        valor  = round(float(bruto), 2)
+        valor  = _validar_valor_brl(request.form.get("valor", "0"))
         metodo = billing.normalizar_metodo(request.form.get("metodo", "PIX"))
         if metodo == billing.METODO_NEXUSCOIN:
             raise ValueError("Não é possível comprar NexusCoin com NexusCoin.")
@@ -1551,7 +1586,8 @@ def _sinal_da_reserva(usuario: str, charger_id: str) -> float:
 
 
 def _arquivar_sessao(sessao, usuario: str, metodo: str,
-                     sinal: float, cashback: float) -> None:
+                     sinal: float, cashback: float,
+                     conn=None) -> None:
     """
     Grava a sessão encerrada e paga no histórico.
 
@@ -1559,26 +1595,30 @@ def _arquivar_sessao(sessao, usuario: str, metodo: str,
     "Confirmar pagamento" não gera uma segunda linha nem uma segunda cobrança
     (a rota confere `_sessao_arquivada` antes de debitar).
     """
-    db.execute(
+    sql = (
         "INSERT OR IGNORE INTO sessoes ("
         " session_id, usuario, charger_id, station_id, vehicle_id, user_name,"
         " user_type, inicio, fim, hora_inicio, duracao_min, potencia_kw,"
         " energia_kwh, tarifa_kwh, custo_brl, metodo_pagto, sinal_abatido,"
-        " cashback_nc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            sessao.session_id, usuario, sessao.charger_id, sessao.station_id,
-            sessao.vehicle_id, sessao.user_name, sessao.user_type.value,
-            sessao.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            (sessao.end_time or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S"),
-            sessao.start_time.hour,
-            round(sessao.duration_minutes, 2),
-            sessao.allocated_power_kw,
-            round(sessao.energy_kwh, 3),
-            round(sessao.tariff_kwh, 4),
-            round(sessao.total_cost_brl, 2),
-            metodo, round(sinal, 2), round(cashback, 2),
-        ),
+        " cashback_nc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )
+    params = (
+        sessao.session_id, usuario, sessao.charger_id, sessao.station_id,
+        sessao.vehicle_id, sessao.user_name, sessao.user_type.value,
+        sessao.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+        (sessao.end_time or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S"),
+        sessao.start_time.hour,
+        round(sessao.duration_minutes, 2),
+        sessao.allocated_power_kw,
+        round(sessao.energy_kwh, 3),
+        round(sessao.tariff_kwh, 4),
+        round(sessao.total_cost_brl, 2),
+        metodo, round(sinal, 2), round(cashback, 2),
+    )
+    if conn is not None:
+        conn.execute(sql, params)
+    else:
+        db.execute(sql, params)
 
 
 @app.route("/sessao/<session_id>/encerrar", methods=["POST"])
@@ -1670,29 +1710,45 @@ def pagamento(session_id: str):
         flash("Encerre a recarga antes de pagar.", "warning")
         return redirect(url_for("posto", posto_id=sessao.station_id))
 
-    usuario = user_session["usuario"]
-    if sessao.owner and sessao.owner != usuario and not user_session.get("staff"):
-        flash("Esta recarga pertence a outro usuário.", "error")
-        return redirect(url_for("mapa"))
+    eh_avulso = avulso.eh_avulso(sessao.owner)
+    usuario = user_session.get("usuario")
+    dono_avulso = user_session.get("totem_avulso")
+
+    if eh_avulso:
+        if sessao.owner != dono_avulso and not user_session.get("staff"):
+            flash("Esta recarga não pertence a este conector.", "error")
+            return redirect(url_for("totem_home") if _modo() == "totem" else url_for("mapa"))
+        sinal = avulso.CAUCAO_BRL
+        perfil = {"cartao_final": "••••", "cartao_bandeira": "Cartão"}
+        saldo = 0.0
+    else:
+        if not usuario:
+            return redirect(url_for("login"))
+        if sessao.owner and sessao.owner != usuario and not user_session.get("staff"):
+            flash("Esta recarga pertence a outro usuário.", "error")
+            return redirect(url_for("mapa"))
+        sinal = _sinal_da_reserva(usuario, sessao.charger_id)
+        perfil = auth.conta(usuario) or {"cartao_final": "••••", "cartao_bandeira": "Cartão"}
+        saldo = wallet.saldo(usuario)
 
     if _sessao_arquivada(session_id):
-        return redirect(url_for("recibo", session_id=session_id))
+        return redirect(_url_do_recibo(session_id))
 
-    sinal    = _sinal_da_reserva(usuario, sessao.charger_id)
     cobranca = billing.calcular(sessao, sinal)
-    perfil   = auth.conta(usuario)
+    tem_saldo = wallet.pode_pagar(usuario, cobranca.total_brl) if usuario else False
 
     return render_template(
         "totem_pagamento.html" if _modo() == "totem" else "pagamento.html",
         sessao=sessao,
         posto=POSTOS.get(sessao.station_id, {}),
         cobranca=cobranca,
-        saldo=wallet.saldo(usuario),
-        tem_saldo=wallet.pode_pagar(usuario, cobranca.total_brl),
+        saldo=saldo,
+        tem_saldo=tem_saldo,
         cartao_final=perfil["cartao_final"],
         cartao_bandeira=perfil["cartao_bandeira"],
         qr_svg=qr_svg(f"CGI|{session_id}|{cobranca.total_brl:.2f}",
                       rotulo="QR Code do Pix"),
+        eh_avulso=eh_avulso,
     )
 
 
@@ -1717,7 +1773,25 @@ def pagamento_confirmar(session_id: str):
         flash("Sessão não encontrada.", "error")
         return redirect(url_for("mapa"))
 
-    usuario = user_session["usuario"]
+    eh_avulso = avulso.eh_avulso(sessao.owner)
+    usuario = user_session.get("usuario")
+    dono_avulso = user_session.get("totem_avulso")
+
+    if eh_avulso:
+        if sessao.owner != dono_avulso and not user_session.get("staff"):
+            flash("Esta recarga pertence a outro conector.", "error")
+            return redirect(url_for("totem_home") if _modo() == "totem" else url_for("mapa"))
+        if _sessao_arquivada(session_id):
+            return redirect(_url_do_recibo(session_id))
+        metodo = billing.normalizar_metodo(request.form.get("metodo", ""))
+        if metodo == billing.METODO_NEXUSCOIN:
+            flash("NexusCoin exige conta. Use cartão ou Pix.", "error")
+            return redirect(url_for("pagamento", session_id=session_id))
+        _acertar_avulso(sessao, metodo)
+        return redirect(_url_do_recibo(session_id))
+
+    if not usuario:
+        return redirect(url_for("login"))
 
     # A mesma guarda do GET desta tela. Sem ela o POST aceitava pagar a recarga
     # de outra pessoa: a carteira de quem chamava era debitada e a sessão ia
@@ -1738,20 +1812,33 @@ def pagamento_confirmar(session_id: str):
         cobranca = billing.calcular(sessao, sinal)
         cashback = 0.0
 
-        if metodo == billing.METODO_NEXUSCOIN and cobranca.total_brl > 0:
-            wallet.debitar(
-                usuario, cobranca.total_brl, "PAGAMENTO",
-                f"Recarga {sessao.charger_id} · {sessao.session_id}",
-            )
-            cashback = cobranca.cashback_nc
-            if cashback > 0:
-                wallet.creditar(
-                    usuario, cashback, "CASHBACK",
-                    f"Cashback {int(wallet.CASHBACK_NEXUSCOIN * 100)}% · "
-                    f"{sessao.session_id}",
-                )
+        with db.transaction() as conn:
+            # Revalida concorrência imediata: se já arquivou, não debita nem duplica
+            ja_paga = conn.execute(
+                "SELECT 1 FROM sessoes WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if ja_paga:
+                return redirect(_url_do_recibo(session_id))
 
-        _arquivar_sessao(sessao, usuario, metodo, cobranca.sinal_brl, cashback)
+            if metodo == billing.METODO_NEXUSCOIN and cobranca.total_brl > 0:
+                wallet.debitar(
+                    usuario, cobranca.total_brl, "PAGAMENTO",
+                    f"Recarga {sessao.charger_id} · {sessao.session_id}",
+                    conn=conn,
+                )
+                cashback = cobranca.cashback_nc
+                if cashback > 0:
+                    wallet.creditar(
+                        usuario, cashback, "CASHBACK",
+                        f"Cashback {int(wallet.CASHBACK_NEXUSCOIN * 100)}% · "
+                        f"{sessao.session_id}",
+                        conn=conn,
+                    )
+
+            # Finaliza a reserva consumida para não conceder desconto indevido no futuro
+            reservations.finalizar(usuario, sessao.charger_id, conn=conn)
+
+            _arquivar_sessao(sessao, usuario, metodo, cobranca.sinal_brl, cashback, conn=conn)
 
         # Pago: agora sim o carro sai e a vaga volta para a fila (#B41).
         with _state_lock:
@@ -2014,10 +2101,17 @@ def _sessao_do_totem():
     if not dono:
         return None
     cid = _conector_do_totem()
+    sid = sm.list_chargers().get(cid)
+    if sid:
+        sessao = sm.get_session(sid)
+        if sessao and sessao.owner == dono:
+            if sessao.is_active or not _sessao_arquivada(sessao.session_id):
+                return sessao
+
     for sessao in reversed(sm.list_all()):
-        if sessao.charger_id == cid and sessao.owner == dono \
-                and not _sessao_arquivada(sessao.session_id):
-            return sessao
+        if sessao.charger_id == cid and sessao.owner == dono:
+            if sessao.is_active or not _sessao_arquivada(sessao.session_id):
+                return sessao
     return None
 
 
@@ -2116,10 +2210,18 @@ def _sessao_conector_usuario(charger_id: str, usuario: Optional[str]):
     """Localiza a sessão ativa ou recém-finalizada no conector vinculada ao usuário."""
     if not charger_id:
         return None
+    # Consulta rápida pelo conector físico: evita varredura de lista e chamadas SQL repetidas em polling
+    sid = sm.list_chargers().get(charger_id)
+    if sid:
+        sessao = sm.get_session(sid)
+        if sessao and (not usuario or sessao.owner == usuario):
+            if sessao.is_active or not _sessao_arquivada(sessao.session_id):
+                return sessao
+
     for sessao in reversed(sm.list_all()):
-        if sessao.charger_id == charger_id and (not usuario or sessao.owner == usuario) \
-                and not _sessao_arquivada(sessao.session_id):
-            return sessao
+        if sessao.charger_id == charger_id and (not usuario or sessao.owner == usuario):
+            if sessao.is_active or not _sessao_arquivada(sessao.session_id):
+                return sessao
     return None
 
 
@@ -2378,9 +2480,20 @@ def totem_carregando_status():
     if sessao is None:
         return jsonify({"ativo": False, "redirect": url_for("totem_home")})
     if not sessao.is_active:
+        if avulso.eh_avulso(sessao.owner):
+            cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+            if cobranca.total_brl > 0 and not _sessao_arquivada(sessao.session_id):
+                return jsonify({
+                    "ativo": False,
+                    "redirect": url_for("pagamento", session_id=sessao.session_id),
+                })
+            return jsonify({
+                "ativo": False,
+                "redirect": url_for("totem_recibo", session_id=sessao.session_id),
+            })
         return jsonify({
             "ativo": False,
-            "redirect": url_for("pagamento", session_id=sessao.session_id)
+            "redirect": url_for("pagamento", session_id=sessao.session_id),
         })
 
     with _state_lock:
@@ -2405,15 +2518,28 @@ def totem_encerrar():
     Encerra a recarga deste totem.
 
     Com conta, segue para a tela de pagamento — a mesma regra do app, em que
-    o conector só é liberado quando o pagamento é confirmado. Sem conta, a
-    caução já está retida: encerrar e acertar são o mesmo passo.
+    o conector só é liberado quando o pagamento é confirmado.
+    Sem conta:
+      - se consumo <= sinal (R$ 50), deduz do sinal, estorna na hora e libera o conector.
+      - se consumo > sinal (R$ 50), encerra a medição e envia para a tela de pagamento
+        para quitar o excedente antes de liberar o conector.
     """
     sessao = _sessao_do_totem()
     if sessao is None or not sessao.is_active:
         return redirect(url_for("totem_home"))
     if avulso.eh_avulso(sessao.owner):
-        _acertar_avulso(sessao, user_session.get("avulso_metodo", billing.METODO_PIX))
-        return redirect(url_for("totem_recibo", session_id=sessao.session_id))
+        with _state_lock:
+            sm.accrue_energy(sessao)
+        cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+        if cobranca.total_brl <= 0:
+            _acertar_avulso(sessao, user_session.get("avulso_metodo", billing.METODO_PIX))
+            return redirect(url_for("totem_recibo", session_id=sessao.session_id))
+        else:
+            with _state_lock:
+                sm.finish_session(sessao.session_id, liberar=False)
+                mb.on_session_end(sessao)
+            flash("Recarga encerrada! Efetue o pagamento do valor excedente para liberar o conector.", "info")
+            return redirect(url_for("pagamento", session_id=sessao.session_id))
     return encerrar_recarga(sessao.session_id)
 
 

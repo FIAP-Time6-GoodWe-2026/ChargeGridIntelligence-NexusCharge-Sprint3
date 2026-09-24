@@ -210,7 +210,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if s and s.is_active %}
+{% if s and (s.is_active or (not sessao_arquivada and cobranca.total_brl > 0)) %}
 <script>
 (function() {
     var token = "{{ token }}";
@@ -222,19 +222,26 @@
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (!data || data.status === "nao_encontrado") return;
+                {% if s.is_active %}
                 if (data.concluido) {
                     window.location.reload();
                     return;
                 }
+                {% else %}
+                if (data.arquivada) {
+                    window.location.reload();
+                    return;
+                }
+                {% endif %}
                 var elEnergia = document.getElementById("bl-val-energia");
                 var elPotencia = document.getElementById("bl-val-potencia");
                 var elTempo = document.getElementById("bl-val-tempo");
                 var elConsumo = document.getElementById("bl-val-consumo");
 
-                if (elEnergia && data.energia_kwh) elEnergia.textContent = data.energia_kwh + " kWh";
-                if (elPotencia && data.potencia_kw) elPotencia.textContent = data.potencia_kw + " kW";
-                if (elTempo && data.duracao_min) elTempo.textContent = data.duracao_min + " min";
-                if (elConsumo && data.subtotal_brl) elConsumo.textContent = "R$ " + data.subtotal_brl;
+                if (elEnergia && data.energia_kwh !== undefined) elEnergia.textContent = data.energia_kwh + " kWh";
+                if (elPotencia && data.potencia_kw !== undefined) elPotencia.textContent = data.potencia_kw + " kW";
+                if (elTempo && data.duracao_min !== undefined) elTempo.textContent = data.duracao_min + " min";
+                if (elConsumo && data.subtotal_brl !== undefined) elConsumo.textContent = "R$ " + data.subtotal_brl;
             })
             .catch(function(err) {
                 console.warn("Erro ao buscar telemetria avulso:", err);

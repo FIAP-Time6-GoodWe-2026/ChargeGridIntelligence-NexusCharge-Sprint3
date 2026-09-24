@@ -2952,3 +2952,212 @@ class TestTotemSemConta:
                          "totem_carregando", "totem_encerrar", "totem_recibo",
                          "celular_parear", "avulso_sessao", "avulso_status"):
             assert endpoint in app_module.ROTAS_PUBLICAS, endpoint
+
+
+# ===========================================================================
+# Robustez, Transações Atômicas e Concorrência (Auditoria Sênior)
+# ===========================================================================
+
+class TestRobustezEConcorrencia:
+    """Valida as proteções de integridade, prevenção de TOCTOU e limites de memória."""
+
+    def test_carteira_atomicidade_e_toctou(self, tmp_path, monkeypatch):
+        import db
+        import wallet
+
+        db_file = tmp_path / "test_carteira_atomic.db"
+        monkeypatch.setattr(db, "DB_PATH", db_file)
+        db.init()
+        db.reset()
+
+        wallet.garantir_conta("teste_atomic", 10.0)
+        assert wallet.saldo("teste_atomic") == 10.0
+
+        # Primeiro débito com sucesso
+        novo_saldo = wallet.debitar("teste_atomic", 10.0, "PAGAMENTO", "Debito total")
+        assert novo_saldo == 0.0
+
+        # Segundo débito simultâneo deve falhar sem deixar saldo negativo
+        with pytest.raises(wallet.SaldoInsuficiente):
+            wallet.debitar("teste_atomic", 10.0, "PAGAMENTO", "Debito excedente")
+
+        assert wallet.saldo("teste_atomic") == 0.0
+
+    def test_reserva_usuario_duplicada_bloqueada_e_sem_prejuizo(self, tmp_path, monkeypatch):
+        import db
+        import reservations
+        import wallet
+
+        db_file = tmp_path / "test_reserva_atomic.db"
+        monkeypatch.setattr(db, "DB_PATH", db_file)
+        db.init()
+        db.reset()
+
+        wallet.garantir_conta("user_concorrente", 20.0)
+
+        # Primeira reserva com sucesso
+        r1 = reservations.criar("user_concorrente", "P1-C1")
+        assert r1.status == "ATIVA"
+        assert wallet.saldo("user_concorrente") == 10.0
+
+        # Tentativa de segunda reserva ativa para o mesmo usuário deve ser recusada
+        with pytest.raises(ValueError):
+            reservations.criar("user_concorrente", "P1-C2")
+
+        # Saldo não pode ter sido debitado no erro (deve continuar exatamente 10.0)
+        assert wallet.saldo("user_concorrente") == 10.0
+
+    def test_power_manager_deque_history_bounded(self):
+        from power_manager import AllocationResult, PowerManager
+        from session_manager import SessionManager
+
+        sm = SessionManager()
+        pm = PowerManager(sm, limit_kw=33.0)
+
+        # Adiciona 1200 resultados ao histórico
+        for i in range(1200):
+            pm._history.append(
+                AllocationResult(
+                    granted_kw=11.0,
+                    redistributed=False,
+                    message=f"Teste {i}",
+                )
+            )
+
+        # Histórico deve estar limitado a 1000 itens (sem memory leak)
+        assert len(pm.history) == 1000
+        assert pm.history[-1].message == "Teste 1199"
+        assert pm.history[0].message == "Teste 200"
+
+    def test_totem_pareamentos_confirmados_limitado(self):
+        import totem
+
+        with totem._trava:
+            totem._pareamentos_confirmados.clear()
+            agora = time.time()
+            for i in range(totem.MAX_CONFIRMADOS + 50):
+                totem._pareamentos_confirmados[f"token_{i}"] = {
+                    "charger_id": "P2-C1",
+                    "usuario": "luiz",
+                    "confirmado_em": agora + i,
+                    "expira": agora + 86400,
+                }
+            totem._limpar_vencidos(agora)
+
+        assert len(totem._pareamentos_confirmados) <= totem.MAX_CONFIRMADOS
+
+    def test_validar_valor_brl_formatos(self, client_usuario):
+        import app as A
+        import wallet
+
+        assert A._validar_valor_brl("50") == 50.0
+        assert A._validar_valor_brl("50.00") == 50.0
+        assert A._validar_valor_brl("50,00") == 50.0
+        assert A._validar_valor_brl("10.50") == 10.5
+        assert A._validar_valor_brl("1.250,50") == 1250.5
+        assert A._validar_valor_brl("1,250.50") == 1250.5
+
+        # Verifica se recarregar via POST com ponto "50.00" credita exatamente 50 e não 5000
+        saldo_antes = wallet.saldo("amanda")
+        client_usuario.post("/carteira/recarregar", data={"valor": "50.00", "metodo": "PIX"})
+        assert wallet.saldo("amanda") == saldo_antes + 50.0
+
+    def test_reserva_finalizada_nao_reaproveita_sinal_em_sessao_futura(self, tmp_path):
+        """
+        Garante que uma reserva utilizada em uma recarga e concluída no pagamento
+        não conceda desconto fantasma de R$ 10 em sessões futuras no mesmo conector.
+        """
+        app_module = _app_limpo(tmp_path)
+        import reservations
+        import wallet
+
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "amanda", "senha": "1234"})
+
+            # 1. Cria reserva no P2-C1
+            reservations.criar("amanda", "P2-C1")
+            assert wallet.saldo("amanda") == 90.0
+
+            # 2. Inicia e encerra primeira sessão
+            c.post("/sessao", data={"posto_id": "P2", "carregador_id": "C1", "placa": "AMD1A11", "hora": "14", "minuto": "0", "tempo": "30", "tipo_usuario": "A"})
+            s1 = next(s for s in app_module.sm.list_all() if s.charger_id == "P2-C1")
+            c.post(f"/sessao/{s1.session_id}/encerrar")
+
+            # 3. Paga a primeira sessão (deve abater os R$ 10 do sinal e finalizar a reserva)
+            c.post(f"/pagamento/{s1.session_id}/confirmar", data={"metodo": "NEXUSCOIN"})
+            res_linha = app_module.db.query_one("SELECT status FROM reservas WHERE charger_id = 'P2-C1' AND usuario = 'amanda'")
+            assert res_linha["status"] == reservations.STATUS_CONCLUIDA
+
+            # 4. Inicia uma SEGUNDA sessão no mesmo conector SEM reserva
+            c.post("/sessao", data={"posto_id": "P2", "carregador_id": "C1", "placa": "AMD1A12", "hora": "15", "minuto": "0", "tempo": "30", "tipo_usuario": "A"})
+            s2 = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
+            c.post(f"/sessao/{s2.session_id}/encerrar")
+
+            # O sinal da segunda recarga DEVE ser 0.0 (não pode reusar a reserva antiga)
+            sinal_segunda = app_module._sinal_da_reserva("amanda", "P2-C1")
+            assert sinal_segunda == 0.0
+
+    def test_totem_avulso_excedente_acima_de_50_exige_pagamento(self, tmp_path):
+        """
+        Recarga avulsa com consumo > R$ 50: ao encerrar no totem, deve solicitar
+        pagamento do excedente e só liberar o conector após o pagamento ser confirmado.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "EXC1D23"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
+            sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
+
+            # Simula consumo acima de R$ 50 (50 kWh = R$ 60,00)
+            sessao.energy_kwh = 50.0
+            sessao.total_cost_brl = 60.0
+
+            # Encerra no totem
+            resp = c.post("/totem/encerrar")
+            assert f"/pagamento/{sessao.session_id}" in resp.headers.get("Location", "")
+            assert not sessao.is_active
+
+            # Conector deve continuar retido antes do pagamento do excedente
+            assert app_module.sm.list_chargers()["P2-C1"] == sessao.session_id
+
+            # Paga o excedente no totem via cartão
+            resp_pagar = c.post(f"/pagamento/{sessao.session_id}/confirmar", data={"metodo": "CARTAO"})
+            assert f"/totem/recibo/{sessao.session_id}" in resp_pagar.headers.get("Location", "")
+
+            # Conector liberado e gravado no histórico com sinal de 50.0
+            assert app_module.sm.list_chargers()["P2-C1"] is None
+            linha = app_module.db.query_one("SELECT * FROM sessoes WHERE session_id = ?", (sessao.session_id,))
+            assert linha is not None
+            assert linha["sinal_abatido"] == 50.0
+            assert linha["custo_brl"] == 60.0
+
+    def test_totem_avulso_abaixo_de_50_estorna_automatico(self, tmp_path):
+        """
+        Recarga avulsa com consumo <= R$ 50: ao encerrar no totem, deduz do sinal,
+        libera o conector imediatamente e emite o recibo com o estorno sem pedir novo pagamento.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "MIN1D23"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
+            sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
+
+            # Consumo de R$ 6,00
+            sessao.energy_kwh = 5.0
+            sessao.total_cost_brl = 6.0
+
+            # Encerra no totem
+            resp = c.post("/totem/encerrar")
+            assert f"/totem/recibo/{sessao.session_id}" in resp.headers.get("Location", "")
+
+            # Conector desocupado na hora
+            assert app_module.sm.list_chargers()["P2-C1"] is None
+
+            # Linha arquivada com sinal_abatido = 6.0 e estorno esperado de 44.0
+            linha = app_module.db.query_one("SELECT * FROM sessoes WHERE session_id = ?", (sessao.session_id,))
+            assert linha is not None
+            assert linha["sinal_abatido"] == 6.0
+
+

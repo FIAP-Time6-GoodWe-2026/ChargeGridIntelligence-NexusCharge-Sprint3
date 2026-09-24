@@ -30,8 +30,9 @@ Sprint 3+:
 
 import logging
 import math
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Protocol, runtime_checkable
+from typing import Deque, Dict, List, Optional, Protocol, runtime_checkable
 
 import algoritmos
 from models import ChargingSession, SessionStatus
@@ -148,7 +149,8 @@ class PowerManager:
             raise ValueError("O limite de potência deve ser positivo.")
         self._sm    = session_manager
         self._limit = limit_kw
-        self._history: List[AllocationResult] = []
+        # Buffer circular: previne vazamento de memória em execuções contínuas
+        self._history: Deque[AllocationResult] = deque(maxlen=1000)
         logger.info(
             "PowerManager inicializado | Limite: %.1f kW | Limiar throttle: %.0f%%",
             limit_kw, LIMIAR_THROTTLE * 100,

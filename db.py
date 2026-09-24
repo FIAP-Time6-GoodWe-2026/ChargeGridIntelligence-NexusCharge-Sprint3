@@ -29,6 +29,7 @@ Decisão de design — uma conexão nova por operação:
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
 import pathlib
@@ -99,6 +100,9 @@ CREATE INDEX IF NOT EXISTS idx_reservas_status    ON reservas   (status, usuario
 -- ATIVA por conector, mesmo com dois pedidos simultâneos.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_reservas_ativa
     ON reservas (charger_id) WHERE status = 'ATIVA';
+-- Garante no banco que um mesmo usuário não pode ter mais de uma reserva ATIVA simultânea
+CREATE UNIQUE INDEX IF NOT EXISTS ux_reservas_usuario_ativa
+    ON reservas (usuario) WHERE status = 'ATIVA';
 
 -- Carros salvos por conta. A mesma placa pode estar em duas contas (o carro
 -- da família, o do amigo que alguém carregou uma vez); dentro de uma conta,
@@ -119,6 +123,28 @@ def _conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@contextlib.contextmanager
+def transaction():
+    """
+    Context manager para transações atômicas no SQLite.
+
+    Abre uma conexão isolada com BEGIN IMMEDIATE, garantindo bloqueio
+    exclusivo de escrita para eliminar condições de corrida entre threads/processos.
+    Comita automaticamente no sucesso e faz rollback integral se qualquer
+    exceção ocorrer.
+    """
+    conn = _conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init() -> None:

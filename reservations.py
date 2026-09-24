@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import sqlite3
 from dataclasses import dataclass
 from typing import Optional
 
@@ -40,6 +41,7 @@ FMT: str = "%Y-%m-%d %H:%M:%S"
 
 STATUS_ATIVA     = "ATIVA"
 STATUS_USADA     = "USADA"
+STATUS_CONCLUIDA = "CONCLUIDA"
 STATUS_EXPIRADA  = "EXPIRADA"
 STATUS_CANCELADA = "CANCELADA"
 
@@ -190,18 +192,27 @@ def criar(usuario: str, charger_id: str) -> Reserva:
     agora  = datetime.datetime.now()
     expira = agora + datetime.timedelta(minutes=DURACAO_MIN)
 
-    wallet.debitar(
-        usuario, wallet.SINAL_RESERVA_BRL, "SINAL",
-        f"Sinal de reserva · {charger_id}",
-    )
+    # Executa dentro de uma transação atômica no SQLite
+    with db.transaction() as conn:
+        wallet.debitar(
+            usuario, wallet.SINAL_RESERVA_BRL, "SINAL",
+            f"Sinal de reserva · {charger_id}",
+            conn=conn,
+        )
+        try:
+            conn.execute(
+                "INSERT INTO reservas "
+                "(charger_id, usuario, criada_em, expira_em, sinal_brl, status) "
+                "VALUES (?,?,?,?,?,?)",
+                (charger_id, usuario, agora.strftime(FMT), expira.strftime(FMT),
+                 wallet.SINAL_RESERVA_BRL, STATUS_ATIVA),
+            )
+        except sqlite3.IntegrityError:
+            # Qualquer colisão concorrente de unicidade desfaz o débito via rollback da transação
+            raise ValueError(
+                f"Não foi possível reservar {charger_id}: conector ou usuário já possuem uma reserva ativa."
+            )
 
-    db.execute(
-        "INSERT INTO reservas "
-        "(charger_id, usuario, criada_em, expira_em, sinal_brl, status) "
-        "VALUES (?,?,?,?,?,?)",
-        (charger_id, usuario, agora.strftime(FMT), expira.strftime(FMT),
-         wallet.SINAL_RESERVA_BRL, STATUS_ATIVA),
-    )
     logger.info("Reserva criada: %s por %s até %s", charger_id, usuario,
                 expira.strftime("%H:%M:%S"))
     return Reserva(charger_id, usuario, agora, expira,
@@ -222,10 +233,20 @@ def cancelar(usuario: str, charger_id: str) -> float:
     if reserva is None or reserva.usuario != usuario:
         raise ValueError("Reserva não encontrada.")
 
-    db.execute("UPDATE reservas SET status = ? WHERE charger_id = ? AND status = ?",
-               (STATUS_CANCELADA, charger_id, STATUS_ATIVA))
-    wallet.creditar(usuario, reserva.sinal_brl, "ESTORNO",
-                    f"Estorno de reserva · {charger_id}")
+    with db.transaction() as conn:
+        cur = conn.execute(
+            "UPDATE reservas SET status = ? WHERE charger_id = ? AND status = ?",
+            (STATUS_CANCELADA, charger_id, STATUS_ATIVA),
+        )
+        if cur.rowcount == 0:
+            raise ValueError("Reserva já foi cancelada ou utilizada.")
+
+        wallet.creditar(
+            usuario, reserva.sinal_brl, "ESTORNO",
+            f"Estorno de reserva · {charger_id}",
+            conn=conn,
+        )
+
     logger.info("Reserva cancelada e estornada: %s (%s)", charger_id, usuario)
     return reserva.sinal_brl
 
@@ -265,6 +286,21 @@ def sinal_creditado(usuario: str, charger_id: str) -> float:
         (charger_id, usuario, STATUS_USADA),
     )
     return round(linha["sinal_brl"], 2) if linha else 0.0
+
+
+def finalizar(usuario: str, charger_id: str, conn=None) -> None:
+    """
+    Finaliza o ciclo da reserva após a sessão correspondente ter sido paga.
+    Transita de USADA -> CONCLUIDA para evitar que o sinal seja reaproveitado
+    em futuras recargas no mesmo conector.
+    """
+    sql = "UPDATE reservas SET status = ? WHERE charger_id = ? AND usuario = ? AND status = ?"
+    params = (STATUS_CONCLUIDA, charger_id, usuario, STATUS_USADA)
+    if conn is not None:
+        conn.execute(sql, params)
+    else:
+        db.execute(sql, params)
+    logger.info("Reserva finalizada (CONCLUIDA): %s (%s)", charger_id, usuario)
 
 
 if __name__ == "__main__":
