@@ -27,7 +27,9 @@ ele paga**.
 | **Modo App / Modo Totem** | Alternância com um clique entre experiência mobile para o motorista e interface vertical para totens físicos de autoatendimento touchscreen. |
 | **Gestão de Veículos** | Suporte a múltiplos veículos por conta, cadastro de veículos avulsos e bloqueio estrito contra recargas simultâneas para a mesma placa. |
 | **Totem com Pareamento** | Login no totem via QR Code dinâmico (ISO/IEC 18004 na stdlib) lido pelo smartphone, liberando o conector sem digitação de senha pública. |
-| **Recarga sem cadastro (Totem)** | Visitante sem conta informa a placa no totem e autoriza um sinal de R$ 50,00 via Pix. O conector é liberado na hora; no término, o sinal abate o consumo e o excedente é estornado automaticamente. |
+| **Recarga sem cadastro (Totem)** | Visitante sem conta informa a placa no totem e autoriza um sinal de R$ 50,00 via Pix. O conector é liberado na hora; no término, o sinal abate o consumo e o excedente é estornado automaticamente. Se ultrapassar R$ 50,00, o saldo residual pode ser pago via Pix no celular ou totem. |
+| **Acompanhamento Móvel Omnichannel** | Monitoramento da recarga em tempo real pelo smartphone via QR Code do totem tanto para contas cadastradas (`/celular/parear/<token>`) quanto para visitantes avulsos (`/avulso/<token>`), com telemetria viva, encerramento remoto e quitação que libera o conector na hora. |
+| **Sincronização Totem ⇄ Celular** | O totem monitora ativamente pagamentos realizados pelo smartphone, transitando automaticamente da tela de cobrança para o comprovante final sem exigir interação física no display público. |
 | **NexusCoin** | Moeda interna com paridade 1 NC = R$ 1,00, **10% de cashback** ao pagar a recarga com ela, extrato auditável e recarga por Pix ou cartão. |
 | **Reserva com sinal** | Bloqueia um conector por 15 minutos cobrando R$ 10,00. Compareceu, o sinal vira crédito; não compareceu, vira taxa por bloqueio; cancelou no prazo, estorno integral. |
 | **Encerrar e pagar** | Botão na tela do posto encerra a própria recarga e leva à tela de pagamento, com NexusCoin, Pix (QR simulado) e cartão salvo. |
@@ -36,6 +38,7 @@ ele paga**.
 | **Persistência** | SQLite (`sqlite3` da biblioteca padrão) guarda carteiras, extrato, reservas e histórico de sessões. |
 | **Estruturas de Dados** | Busca e ordenação implementadas à mão em `algoritmos.py`, **rodando em produção** (`get_session` e `rebalance`), com um segundo ponto de entrada em `menu.py` — menu de terminal sobre a mesma coleção de sessões. |
 | **Fundação de design** | Escala tipográfica, espaçamento, raios e movimento em tokens; contrastes corrigidos para WCAG AA nos dois temas; foco de teclado visível; `prefers-reduced-motion`. |
+| **Hardening & Resiliência** | Cabeçalhos defensivos OWASP (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-XSS-Protection`), proteção anti-open-redirect, clamp contra clock skew em `duration_seconds` e páginas de erro 404/500 customizadas. |
 
 ---
 
@@ -66,7 +69,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 237 testes
+pytest -q          # 257 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -284,14 +287,21 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | GET | `/totem/entrar` | Exibe QR Code dinâmico para pareamento com smartphone |
 | GET | `/totem/entrar/<token>/estado` | Polling de verificação de pareamento consumido pelo totem |
 | GET/POST | `/celular/parear/<token>` | Rota mobile de confirmação de pareamento do usuário com o totem |
+| GET | `/celular/parear/<token>/status` | Polling dinâmico de telemetria da recarga no smartphone pareado |
+| POST | `/celular/parear/<token>/encerrar` | Encerra a recarga pelo smartphone e direciona para quitação no app |
 | GET/POST | `/totem/veiculo` | Seleção de conector e veículo cadastrado na tela do totem |
 | GET/POST | `/totem/sem-conta` | Identificação por placa e conector para visitante sem cadastro |
 | GET/POST | `/totem/sem-conta/pagar` | Autorização de sinal de R$ 50,00 via Pix para liberação |
 | GET | `/totem/carregando` | Monitoramento vertical da recarga em andamento no conector do totem |
+| GET | `/totem/carregando/status` | Polling dinâmico de telemetria exibido no display do totem |
 | POST | `/totem/encerrar` | Encerra recarga diretamente na tela do totem |
+| GET | `/totem/pagamento/<id>/status` | Sincronização omnichannel: detecta pagamento móvel e avança tela do totem |
 | GET | `/totem/recibo/<id>` | Recibo do totem com acerto de consumo e estorno do saldo de sinal |
 | POST | `/totem/sair` | Desconecta a conta pareada do totem e retorna ao estado inicial |
 | GET | `/avulso/<token>` | Acompanhamento mobile da recarga avulsa de visitante |
+| GET | `/avulso/<token>/status` | Polling dinâmico de telemetria da recarga avulsa no smartphone |
+| POST | `/avulso/<token>/encerrar` | Encerra a recarga avulsa pelo smartphone do visitante |
+| POST | `/avulso/<token>/pagar-excedente` | Pagamento móvel do excedente (> R$ 50) liberando conector na hora |
 
 ### Operador (Staff)
 | Método | Rota | Função |
@@ -316,7 +326,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**237 testes** em 29 classes. A suíte roda contra um banco temporário por teste,
+**257 testes** em 30 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -343,6 +353,7 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | **Menu de terminal** | As 7 opções, validações de entrada, `EOFError` e falha dentro de uma opção |
 | **Memória × histórico** | Os rótulos que separam sessões desta execução do histórico arquivado, e a consulta única que substituiu uma por sessão |
 | **Tarifa com fonte única** | `pricing_engine` reexporta as constantes de `logica_recarga` em vez de redeclará-las |
+| **Robustez e Concorrência** | Isolamento de sinal de reserva concluída, exigência de quitação de excedente avulso > R$ 50, estorno automático ≤ R$ 50, proteção contra clock skew em `duration_seconds`, injeção de cabeçalhos OWASP, bloqueio de backslash open-redirect, páginas de erro 404/500 customizadas e sincronização omnichannel totem-celular |
 
 ---
 
