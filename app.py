@@ -1889,7 +1889,7 @@ def recibo(session_id: str):
         return redirect(url_for("mapa"))
 
     dados  = dict(linha)
-    pago   = round(dados["custo_brl"] - dados["sinal_abatido"], 2)
+    pago   = round(max(0.0, dados["custo_brl"] - dados["sinal_abatido"]), 2)
     return render_template(
         "recibo.html",
         r=dados,
