@@ -1803,27 +1803,28 @@ def recibo(session_id: str):
 
 
 def _ip_local() -> str:
-    """
-    IP da máquina na rede local — o endereço que um celular no mesmo Wi-Fi usa.
-
-    Abre um socket UDP para um endereço externo e lê o endereço local que o
-    sistema escolheu para a rota. Nada chega a ser enviado — em UDP o
-    `connect` só fixa o destino. É por isso que 8.8.8.8 não precisa estar
-    acessível.
-
-    Fonte deste trecho: https://stackoverflow.com/q/24525588 (kramer65 e
-    comunidade), CC BY-SA 3.0. A atribuição cobre estas linhas, não o
-    arquivo — o resto do app.py é código do projeto.
-    """
+    """IP local para o QR Code — prioriza LAN física sobre túnel de VPN."""
     import socket
+    candidatos = []
+    try:
+        _, _, ips = socket.gethostbyname_ex(socket.gethostname())
+        candidatos.extend(ips)
+    except Exception:
+        pass
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        candidatos.insert(0, s.getsockname()[0])
         s.close()
-        return ip
     except OSError:
-        return "127.0.0.1"
+        pass
+    for ip in candidatos:
+        if ip.startswith("192.168.") or ip.startswith("10."):
+            return ip
+    for ip in candidatos:
+        if not ip.startswith("127."):
+            return ip
+    return "127.0.0.1"
 
 
 # ---------------------------------------------------------------------------

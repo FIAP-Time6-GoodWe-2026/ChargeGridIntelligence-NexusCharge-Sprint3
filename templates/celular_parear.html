@@ -8,41 +8,42 @@
 {% block extra_css %}
 <style>
 .cp {
-    max-width: 440px; min-height: 100vh; margin: 0 auto;
+    max-width: 440px; min-height: auto; margin: 0 auto;
     display: flex; flex-direction: column;
-    padding: var(--sp-6) var(--sp-5) var(--sp-5);
-    gap: var(--sp-5);
+    padding: var(--sp-4) var(--sp-4) var(--sp-6);
+    gap: var(--sp-4);
+    box-sizing: border-box;
 }
 .cp-marca { display: flex; align-items: center; gap: var(--sp-2);
     font-weight: var(--fw-bold); font-size: var(--fs-lg); color: var(--cor-texto); }
 .cp-marca svg { width: 32px; height: 32px; }
-.cp-titulo { font-size: var(--fs-2xl); font-weight: var(--fw-bold); line-height: var(--lh-tight);
+.cp-titulo { font-size: var(--fs-xl); font-weight: var(--fw-bold); line-height: var(--lh-tight);
     color: var(--cor-texto); text-wrap: balance; }
-.cp-sub { font-size: var(--fs-md); color: var(--cor-texto-secundario); margin-top: var(--sp-2); }
+.cp-sub { font-size: var(--fs-sm); color: var(--cor-texto-secundario); margin-top: var(--sp-1); }
 .cp-conta {
-    display: flex; align-items: center; gap: var(--sp-4);
-    padding: var(--sp-4) var(--sp-5);
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
     background: var(--cor-card); border: 1px solid var(--cor-borda);
     border-radius: var(--r-lg); box-shadow: var(--sombra-sm);
 }
-.cp-avatar { width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+.cp-avatar { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--cor-primaria); color: #fff; font-weight: var(--fw-bold); font-size: var(--fs-lg); }
-.cp-conta strong { display: block; font-size: var(--fs-lg); color: var(--cor-texto); }
-.cp-conta span { font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
-.cp-acoes { margin-top: auto; display: grid; gap: var(--sp-3); }
-.cp-btn { display: flex; align-items: center; justify-content: center; min-height: 56px;
-    border-radius: var(--r-md); font: inherit; font-size: var(--fs-lg); font-weight: var(--fw-bold);
+    background: var(--cor-primaria); color: #fff; font-weight: var(--fw-bold); font-size: var(--fs-md); }
+.cp-conta strong { display: block; font-size: var(--fs-md); color: var(--cor-texto); }
+.cp-conta span { font-size: var(--fs-xs); color: var(--cor-texto-secundario); }
+.cp-acoes { margin-top: var(--sp-2); display: grid; gap: var(--sp-3); }
+.cp-btn { display: flex; align-items: center; justify-content: center; min-height: 52px;
+    border-radius: var(--r-md); font: inherit; font-size: var(--fs-md); font-weight: var(--fw-bold);
     border: 0; cursor: pointer; text-decoration: none; width: 100%; }
-.cp-btn.primario { background: var(--cor-primaria); color: #fff; }
+.cp-btn.primario { background: var(--cor-primaria); color: #fff; box-shadow: var(--sombra-sm); }
 .cp-btn.primario:hover { background: var(--cor-primaria-dark); }
 .cp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.cp-resultado { text-align: center; padding-top: var(--sp-7); }
-.cp-resultado svg { width: 88px; height: 88px; margin: 0 auto var(--sp-4); display: block; }
+.cp-resultado { text-align: center; padding-top: var(--sp-6); }
+.cp-resultado svg { width: 80px; height: 80px; margin: 0 auto var(--sp-4); display: block; }
 .cp-ok circle { fill: var(--cor-livre); }
 .cp-ok path, .cp-erro path { stroke: #fff; stroke-width: 7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .cp-erro circle { fill: var(--cor-ocupado); }
-.cp-nota { font-size: var(--fs-sm); color: var(--cor-texto-secundario); text-align: center; }
+.cp-nota { font-size: var(--fs-xs); color: var(--cor-texto-secundario); text-align: center; margin-top: var(--sp-1); }
 </style>
 {% endblock %}
 
@@ -67,11 +68,11 @@
         </span>
     </div>
 
-    <p class="cp-nota">O totem sai da sua conta sozinho quando a recarga terminar.</p>
-
     <form method="POST" class="cp-acoes">
         <button type="submit" class="cp-btn primario">Confirmar e entrar</button>
     </form>
+
+    <p class="cp-nota">O totem sai da sua conta sozinho quando a recarga terminar.</p>
 
     {% elif estado == 'pronto' %}
     <div class="cp-resultado">
