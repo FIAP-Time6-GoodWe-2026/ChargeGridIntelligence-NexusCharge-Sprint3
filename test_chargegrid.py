@@ -2675,6 +2675,38 @@ class TestTotemComConta:
             with c.session_transaction() as s:
                 assert "usuario" not in s, "o totem esquece quem usou"
 
+    def test_celular_acompanha_telemetria_em_tempo_real(self, tmp_path):
+        import re
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            html = c.get("/totem/entrar").get_data(as_text=True)
+            token = re.search(r"/totem/entrar/([\w-]+)/estado", html).group(1)
+
+            # Celular confirma
+            c.post(f"/celular/parear/{token}")
+
+            # Antes de iniciar a recarga no totem, status do celular é 'aguardando'
+            st = c.get(f"/celular/parear/{token}/status").get_json()
+            assert st["status"] == "aguardando"
+
+            # Totem consome o token e entra
+            c.get(f"/totem/entrar/{token}/estado")
+
+            # Inicia recarga no totem
+            c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+
+            # Agora celular consulta status: deve estar 'carregando' com telemetria
+            st = c.get(f"/celular/parear/{token}/status").get_json()
+            assert st["status"] == "carregando"
+            assert st["veiculo"] == "LUZ9B87"
+            assert "potencia_kw" in st and "energia_kwh" in st
+
+            # GET /celular/parear/<token> deve exibir a tela de telemetria
+            html_celular = c.get(f"/celular/parear/{token}").get_data(as_text=True)
+            assert "Recarregando no Totem" in html_celular
+            assert "LUZ9B87" in html_celular
+
     def test_totem_so_inicia_no_proprio_conector(self, tmp_path):
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:

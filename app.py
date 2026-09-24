@@ -1858,9 +1858,10 @@ ROTAS_TOTEM_EMPRESTADAS: set[str] = {
 }
 # Valem nos dois modos: são o celular do motorista, não a tela do totem.
 ROTAS_DOS_DOIS_MODOS: set[str] = {
-    "static", "trocar_modo", "celular_parear", "avulso_sessao",
+    "static", "trocar_modo", "celular_parear", "celular_parear_status", "avulso_sessao",
 }
-ROTAS_PUBLICAS |= ROTAS_TOTEM | {"trocar_modo", "celular_parear"}
+ROTAS_PUBLICAS |= ROTAS_TOTEM | {"trocar_modo", "celular_parear", "celular_parear_status"}
+
 
 
 def _modo() -> str:
@@ -2106,6 +2107,17 @@ def totem_entrar_estado(token: str):
     return jsonify({"pronto": False})
 
 
+def _sessao_conector_usuario(charger_id: str, usuario: Optional[str]):
+    """Localiza a sessão ativa ou recém-finalizada no conector vinculada ao usuário."""
+    if not charger_id:
+        return None
+    for sessao in reversed(sm.list_all()):
+        if sessao.charger_id == charger_id and (not usuario or sessao.owner == usuario) \
+                and not _sessao_arquivada(sessao.session_id):
+            return sessao
+    return None
+
+
 @app.route("/celular/parear/<token>", methods=["GET", "POST"])
 def celular_parear(token: str):
     """
@@ -2113,19 +2125,92 @@ def celular_parear(token: str):
 
     Na demonstração o celular está sempre logado como a conta
     `auth.CONTA_DO_CELULAR`. Num app real seria a conta do próprio celular.
+    Após confirmar no celular, a tela acompanha a recarga em tempo real assim
+    que ela for iniciada no totem.
     """
-    p = totem.pareamento(token)
     chave = auth.CONTA_DO_CELULAR
-    estado = "confirmar"
-    if p is None:
-        estado = "expirado"
-    elif request.method == "POST":
+    info = totem.info_pareamento(token)
+    if info is None:
+        return render_template("celular_parear.html", estado="expirado", token=token)
+
+    cid = info["charger_id"]
+    posto = POSTOS.get(cid.split("-")[0], {})
+
+    if request.method == "POST":
         estado = "pronto" if totem.confirmar(token, chave) else "expirado"
+        info = totem.info_pareamento(token)
+    else:
+        # Se for GET: se já confirmou antes, exibe pronto/acompanhamento; senão, confirmar
+        estado = "pronto" if (info and info.get("usuario")) else "confirmar"
+
+    sessao = None
+    cobranca = None
+    if estado == "pronto":
+        usuario = (info.get("usuario") if info else None) or chave
+        sessao = _sessao_conector_usuario(cid, usuario)
+        if sessao and sessao.is_active:
+            with _state_lock:
+                sm.accrue_energy(sessao)
+            cobranca = billing.calcular(sessao)
+
     return render_template(
-        "celular_parear.html", estado=estado, conta=auth.conta(chave),
-        charger_id=p["charger_id"] if p else "",
-        posto=POSTOS.get(p["charger_id"].split("-")[0], {}) if p else {},
+        "celular_parear.html",
+        estado=estado,
+        token=token,
+        conta=auth.conta(chave),
+        charger_id=cid,
+        posto=posto,
+        sessao=sessao,
+        cobranca=cobranca,
     )
+
+
+@app.route("/celular/parear/<token>/status")
+def celular_parear_status(token: str):
+    """Retorna o status em tempo real da recarga vinculada a este token para o celular."""
+    info = totem.info_pareamento(token)
+    if info is None:
+        return jsonify({"status": "expirado"})
+
+    cid = info["charger_id"]
+    posto = POSTOS.get(cid.split("-")[0], {})
+    usuario = info.get("usuario") or auth.CONTA_DO_CELULAR
+
+    sessao = _sessao_conector_usuario(cid, usuario)
+    if not sessao:
+        return jsonify({
+            "status": "aguardando",
+            "charger_id": cid,
+            "posto_nome": posto.get("nome", "Posto Nexus"),
+            "usuario": usuario,
+        })
+
+    if not sessao.is_active:
+        return jsonify({
+            "status": "concluido",
+            "charger_id": cid,
+            "posto_nome": posto.get("nome", "Posto Nexus"),
+            "veiculo": sessao.vehicle_id,
+        })
+
+    with _state_lock:
+        sm.accrue_energy(sessao)
+    cobranca = billing.calcular(sessao)
+
+    return jsonify({
+        "status": "carregando",
+        "charger_id": cid,
+        "posto_nome": posto.get("nome", "Posto Nexus"),
+        "veiculo": sessao.vehicle_id,
+        "potencia_kw": round(sessao.allocated_power_kw, 1),
+        "energia_kwh": round(sessao.energy_kwh, 2),
+        "duracao_min": round(cobranca.duracao_min),
+        "subtotal_brl": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
+        "tarifa_kwh": f"{cobranca.tarifa_kwh:.4f}".replace(".", ","),
+        "em_throttle": sessao.status.value == "THROTTLED",
+        "status_texto": "Potência ajustada pela rede" if sessao.status.value == "THROTTLED" else "Recarregando",
+    })
+
 
 
 @app.route("/totem/veiculo", methods=["GET", "POST"])

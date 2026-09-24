@@ -37,12 +37,15 @@ VALIDADE_PAREAMENTO_S: int = 180
 # processo só; com vários workers precisaria ir para o banco ou para um cache
 # compartilhado, porque o celular e o totem podem cair em processos diferentes.
 _pareamentos: Dict[str, dict] = {}
+_pareamentos_confirmados: Dict[str, dict] = {}
 _trava = threading.Lock()
 
 
 def _limpar_vencidos(agora: float) -> None:
     for token in [t for t, p in _pareamentos.items() if p["expira"] < agora]:
         del _pareamentos[token]
+    for token in [t for t, p in _pareamentos_confirmados.items() if p["expira"] < agora]:
+        del _pareamentos_confirmados[token]
 
 
 def criar_pareamento(charger_id: str) -> str:
@@ -64,6 +67,17 @@ def pareamento(token: str) -> Optional[dict]:
         return dict(p) if p else None
 
 
+def info_pareamento(token: str) -> Optional[dict]:
+    """
+    Informações do pareamento para o celular acompanhar o status da recarga,
+    mesmo após o token ter sido consumido pelo totem no login.
+    """
+    with _trava:
+        _limpar_vencidos(time.time())
+        p = _pareamentos.get(token) or _pareamentos_confirmados.get(token)
+        return dict(p) if p else None
+
+
 def confirmar(token: str, usuario: str) -> bool:
     """
     O celular confirma: amarra a conta ao pareamento.
@@ -77,6 +91,13 @@ def confirmar(token: str, usuario: str) -> bool:
         if p is None or (p["usuario"] and p["usuario"] != usuario):
             return False
         p["usuario"] = usuario
+        # Registra nos confirmados para o celular acompanhar mesmo após o totem consumir
+        _pareamentos_confirmados[token] = {
+            "charger_id": p["charger_id"],
+            "usuario": usuario,
+            "confirmado_em": time.time(),
+            "expira": time.time() + 86400,
+        }
         return True
 
 
@@ -89,5 +110,12 @@ def consumir(token: str) -> Optional[str]:
         p = _pareamentos.get(token)
         if p is None or p["expira"] < time.time() or not p["usuario"]:
             return None
+        _pareamentos_confirmados[token] = {
+            "charger_id": p["charger_id"],
+            "usuario": p["usuario"],
+            "confirmado_em": time.time(),
+            "expira": time.time() + 86400,
+        }
         del _pareamentos[token]
         return p["usuario"]
+

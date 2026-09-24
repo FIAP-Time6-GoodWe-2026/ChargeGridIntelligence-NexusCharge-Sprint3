@@ -143,35 +143,195 @@ body { animation: none; }            /* login não precisa de animação de entr
     border-color: rgba(255, 255, 255, 0.3);
 }
 
-.login-card { width: 100%; max-width: 400px; }
+.login-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--cor-card);
+    border: 1px solid var(--cor-borda);
+    border-radius: 24px;
+    padding: var(--sp-7) var(--sp-6) var(--sp-6);
+    box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+    position: relative;
+    overflow: hidden;
+    transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+}
+
+/* Glassmorphism e iluminação em Dark Mode (aparência futurista GoodWe) */
+[data-theme="dark"] .login-card {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.72) 0%, rgba(15, 23, 42, 0.88) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 24px 50px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Detalhe reflexivo no topo do container */
+.login-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cor-primaria), transparent);
+    opacity: 0.8;
+}
+
+.login-badge-app {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--cor-primaria);
+    background: rgba(192, 0, 0, 0.08);
+    padding: 5px 12px;
+    border-radius: var(--r-pill);
+    margin-bottom: var(--sp-4);
+    border: 1px solid rgba(192, 0, 0, 0.15);
+}
+[data-theme="dark"] .login-badge-app {
+    background: rgba(225, 20, 20, 0.14);
+    color: #FF5A5A;
+    border-color: rgba(225, 20, 20, 0.25);
+}
+
+.login-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--cor-livre);
+    box-shadow: 0 0 6px var(--cor-livre);
+}
 
 .login-titulo {
     font-size: var(--fs-2xl);
     font-weight: var(--fw-bold);
     line-height: var(--lh-tight);
-    margin-bottom: var(--sp-2);
+    color: var(--cor-texto);
+    margin-bottom: var(--sp-1);
 }
 .login-sub {
     font-size: var(--fs-sm);
     color: var(--cor-texto-secundario);
     margin-bottom: var(--sp-6);
+    line-height: var(--lh-normal);
+}
+
+/* ── Campos com ícone e foco acessível ───────────────────────────────────── */
+.campo {
+    margin-bottom: var(--sp-4);
+}
+.campo label {
+    display: block;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    color: var(--cor-texto);
+    margin-bottom: 6px;
+}
+.campo-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.campo-icon {
+    position: absolute;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    color: var(--cor-texto-secundario);
+    pointer-events: none;
+    transition: color var(--t-fast) var(--ease);
+}
+.campo input {
+    width: 100%;
+    padding: 12px 14px 12px 42px;
+    border: 1px solid var(--cor-borda);
+    border-radius: 12px;
+    background: var(--cor-input-bg);
+    color: var(--cor-texto);
+    font-size: var(--fs-md);
+    transition: border-color var(--t-base) var(--ease),
+                box-shadow var(--t-base) var(--ease),
+                background-color var(--t-base) var(--ease);
+}
+[data-theme="dark"] .campo input {
+    background: rgba(15, 23, 42, 0.6);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+.campo input:focus {
+    outline: none;
+    border-color: var(--cor-primaria);
+    box-shadow: 0 0 0 3px rgba(192, 0, 0, 0.18);
+}
+.campo-wrapper:focus-within .campo-icon {
+    color: var(--cor-primaria);
+}
+
+/* ── Botão Entrar Premium ────────────────────────────────────────────────── */
+.btn-bloco.primario {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #D41414 0%, #A00000 100%);
+    color: #FFFFFF;
+    font-weight: var(--fw-bold);
+    font-size: var(--fs-md);
+    border: 0;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(192, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    transition: transform var(--t-fast) var(--ease),
+                box-shadow var(--t-fast) var(--ease),
+                filter var(--t-fast) var(--ease);
+}
+.btn-bloco.primario:hover {
+    filter: brightness(1.08);
+    box-shadow: 0 6px 20px rgba(192, 0, 0, 0.45);
+    transform: translateY(-1px);
+}
+.btn-bloco.primario:active {
+    transform: translateY(0);
 }
 
 /* ── Contas de demonstração ─────────────────────────────────────────────── */
-.demo-bloco { margin-top: var(--sp-6); }
-
-.demo-titulo {
-    display: flex; align-items: center; gap: var(--sp-3);
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+.demo-recolhido {
+    margin-top: var(--sp-5);
+    border-top: 1px solid var(--cor-borda);
+    padding-top: var(--sp-4);
+}
+[data-theme="dark"] .demo-recolhido {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+.demo-recolhido > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
     color: var(--cor-texto-secundario);
-    margin-bottom: var(--sp-3);
+    padding: 8px 12px;
+    border-radius: var(--r-md);
+    background: var(--cor-superficie-2);
+    transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
-.demo-titulo::before, .demo-titulo::after {
-    content: ""; flex: 1; height: 1px; background: var(--cor-borda);
+.demo-recolhido > summary::-webkit-details-marker { display: none; }
+.demo-recolhido > summary:hover {
+    color: var(--cor-texto);
+    background: rgba(255, 255, 255, 0.08);
 }
+.demo-recolhido > summary svg {
+    width: 14px; height: 14px;
+    transition: transform var(--dur-rapida, .18s) ease;
+}
+.demo-recolhido[open] > summary svg { transform: rotate(180deg); }
+.demo-recolhido[open] > summary { margin-bottom: var(--sp-3); }
 
 .demo-lista { display: grid; gap: var(--sp-2); }
 
@@ -179,7 +339,7 @@ body { animation: none; }            /* login não precisa de animação de entr
     display: flex; align-items: center; gap: var(--sp-3);
     width: 100%;
     padding: var(--sp-3);
-    background: var(--cor-card);
+    background: var(--cor-superficie-2);
     border: 1px solid var(--cor-borda);
     border-radius: var(--r-md);
     cursor: pointer;
@@ -188,7 +348,17 @@ body { animation: none; }            /* login não precisa de animação de entr
     transition: border-color var(--t-base) var(--ease),
                 background var(--t-base) var(--ease);
 }
-.demo-conta:hover { border-color: var(--cor-primaria); }
+[data-theme="dark"] .demo-conta {
+    background: rgba(15, 23, 42, 0.45);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+.demo-conta:hover {
+    border-color: var(--cor-primaria);
+    background: rgba(192, 0, 0, 0.04);
+}
+[data-theme="dark"] .demo-conta:hover {
+    background: rgba(192, 0, 0, 0.12);
+}
 
 .demo-avatar {
     width: 34px; height: 34px; flex: 0 0 34px;
@@ -199,6 +369,10 @@ body { animation: none; }            /* login não precisa de animação de entr
     font-size: var(--fs-xs);
     font-weight: var(--fw-bold);
     color: var(--cor-texto-secundario);
+}
+[data-theme="dark"] .demo-avatar {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 
 .demo-info { flex: 1; min-width: 0; }
@@ -241,46 +415,29 @@ body { animation: none; }            /* login não precisa de animação de entr
 
 @media (max-width: 900px) {
     .login-tela { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    .login-form-lado { flex-direction: column; align-items: stretch; padding: var(--sp-6) var(--sp-4) var(--sp-7); }
-    .login-card { margin: 0 auto; }
+    .login-form-lado {
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--sp-6) var(--sp-4) var(--sp-7);
+        min-height: calc(100dvh - 80px);
+    }
+    .login-card {
+        margin: 0 auto;
+        padding: var(--sp-6) var(--sp-5);
+    }
     .login-marca {
         position: relative;
-        padding: var(--sp-5) var(--sp-4);
+        padding: var(--sp-4) var(--sp-4);
         flex-direction: row; align-items: center; justify-content: space-between; gap: var(--sp-3);
     }
     .login-marca-conteudo { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
-    .login-simbolo { width: 48px; height: 48px; margin: 0; flex: 0 0 48px; }
-    .login-wordmark { font-size: 1.35rem; margin: 0; }
+    .login-simbolo { width: 44px; height: 44px; margin: 0; flex: 0 0 44px; }
+    .login-wordmark { font-size: 1.25rem; margin: 0; }
     .login-wordmark span { display: inline; }
     .login-tema { position: static; margin-left: auto; flex-shrink: 0; }
     .login-regua, .login-assinatura, .login-pilares { display: none; }
 }
-    /* ── Contas de demonstração, recolhidas ───────────────────────────── */
-    .demo-recolhido {
-        margin-top: var(--sp-5);
-        border-top: 1px solid var(--cor-borda);
-        padding-top: var(--sp-4);
-    }
-    .demo-recolhido > summary {
-        cursor: pointer;
-        list-style: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--sp-2);
-        font-size: var(--fs-sm);
-        color: var(--cor-texto-secundario);
-        padding: 6px;
-        border-radius: var(--r-md);
-    }
-    .demo-recolhido > summary::-webkit-details-marker { display: none; }
-    .demo-recolhido > summary:hover { color: var(--cor-texto); }
-    .demo-recolhido > summary svg {
-        width: 14px; height: 14px;
-        transition: transform var(--dur-rapida, .18s) ease;
-    }
-    .demo-recolhido[open] > summary svg { transform: rotate(180deg); }
-    .demo-recolhido[open] > summary { margin-bottom: var(--sp-3); }    }
 </style>
 {% endblock %}
 
@@ -358,6 +515,14 @@ body { animation: none; }            /* login não precisa de animação de entr
     {# ── Painel do formulário ────────────────────────────────────────── #}
     <main class="login-form-lado">
         <div class="login-card">
+            <div class="login-badge-app">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
+                </svg>
+                <span>NexusCharge Mobile · GoodWe EV Ecosystem</span>
+            </div>
+
             <h2 class="login-titulo">Entrar</h2>
             <p class="login-sub">Acesse sua conta para encontrar um posto e carregar.</p>
 
@@ -366,17 +531,29 @@ body { animation: none; }            /* login não precisa de animação de entr
 
                 <div class="campo">
                     <label for="usuario">Usuário</label>
-                    <input type="text" id="usuario" name="usuario"
-                           autocomplete="username" autocapitalize="none"
-                           spellcheck="false" required
-                           placeholder="seu usuário">
+                    <div class="campo-wrapper">
+                        <svg class="campo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <input type="text" id="usuario" name="usuario"
+                               autocomplete="username" autocapitalize="none"
+                               spellcheck="false" required
+                               placeholder="seu usuário">
+                    </div>
                 </div>
 
                 <div class="campo">
                     <label for="senha">Senha</label>
-                    <input type="password" id="senha" name="senha"
-                           autocomplete="current-password" required
-                           placeholder="••••">
+                    <div class="campo-wrapper">
+                        <svg class="campo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        <input type="password" id="senha" name="senha"
+                               autocomplete="current-password" required
+                               placeholder="••••">
+                    </div>
                 </div>
 
                 <button type="submit" class="btn-bloco primario">
