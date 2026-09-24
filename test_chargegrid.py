@@ -2737,6 +2737,32 @@ class TestTotemComConta:
             assert f"/pagamento/{sessao.session_id}" in resp.headers["Location"]
             assert sessao.is_active is False
 
+    def test_recarregar_pagina_celular_nao_expira_e_mantem_sessao(self, tmp_path):
+        import re
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            html = c.get("/totem/entrar").get_data(as_text=True)
+            token = re.search(r"/totem/entrar/([\w-]+)/estado", html).group(1)
+            # Confirma no celular (gera redirect via PRG)
+            resp = c.post(f"/celular/parear/{token}")
+            assert resp.status_code == 302
+            # Totem consome o token e loga
+            c.get(f"/totem/entrar/{token}/estado")
+            c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+
+            # Usuário recarrega a página no celular (GET ou reenviando POST acidental)
+            html_get = c.get(f"/celular/parear/{token}").get_data(as_text=True)
+            assert "Este código expirou" not in html_get
+            assert "Recarregando no Totem" in html_get
+
+            # Reenviar POST também não quebra nem expira
+            resp_post = c.post(f"/celular/parear/{token}")
+            assert resp_post.status_code == 302
+            html_post_reload = c.get(resp_post.headers["Location"]).get_data(as_text=True)
+            assert "Este código expirou" not in html_post_reload
+            assert "Recarregando no Totem" in html_post_reload
+
     def test_totem_so_inicia_no_proprio_conector(self, tmp_path):
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
@@ -2902,6 +2928,16 @@ class TestTotemSemConta:
             html = celular.get(f"/avulso/{token}").get_data(as_text=True)
             assert "Recarga concluída" in html and "Volta para você" in html
 
+    def test_avulso_status_telemetria_dinamica(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            token = app_module.sm.list_active()[0].owner.split(":", 1)[1]
+            st = c.get(f"/avulso/{token}/status").get_json()
+            assert st["ativo"] is True
+            assert st["concluido"] is False
+            assert "energia_kwh" in st and "potencia_kw" in st and "subtotal_brl" in st
+
     def test_token_desconhecido_responde_404(self, client_anonimo):
         assert client_anonimo.get("/avulso/naoexiste").status_code == 404
 
@@ -2914,5 +2950,5 @@ class TestTotemSemConta:
         import app as app_module
         for endpoint in ("totem_home", "totem_sem_conta", "totem_sinal",
                          "totem_carregando", "totem_encerrar", "totem_recibo",
-                         "celular_parear", "avulso_sessao"):
+                         "celular_parear", "avulso_sessao", "avulso_status"):
             assert endpoint in app_module.ROTAS_PUBLICAS, endpoint

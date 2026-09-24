@@ -1859,11 +1859,11 @@ ROTAS_TOTEM_EMPRESTADAS: set[str] = {
 # Valem nos dois modos: são o celular do motorista, não a tela do totem.
 ROTAS_DOS_DOIS_MODOS: set[str] = {
     "static", "trocar_modo", "celular_parear", "celular_parear_status",
-    "celular_parear_encerrar", "avulso_sessao", "avulso_encerrar", "avulso_pagar_excedente",
+    "celular_parear_encerrar", "avulso_sessao", "avulso_status", "avulso_encerrar", "avulso_pagar_excedente",
 }
 ROTAS_PUBLICAS |= ROTAS_TOTEM | {
     "trocar_modo", "celular_parear", "celular_parear_status",
-    "celular_parear_encerrar", "avulso_encerrar", "avulso_pagar_excedente",
+    "celular_parear_encerrar", "avulso_status", "avulso_encerrar", "avulso_pagar_excedente",
 }
 
 
@@ -2142,11 +2142,12 @@ def celular_parear(token: str):
     posto = POSTOS.get(cid.split("-")[0], {})
 
     if request.method == "POST":
-        estado = "pronto" if totem.confirmar(token, chave) else "expirado"
-        info = totem.info_pareamento(token)
-    else:
-        # Se for GET: se já confirmou antes, exibe pronto/acompanhamento; senão, confirmar
-        estado = "pronto" if (info and info.get("usuario")) else "confirmar"
+        if not totem.confirmar(token, chave):
+            return render_template("celular_parear.html", estado="expirado", token=token)
+        return redirect(url_for("celular_parear", token=token))
+
+    # Se for GET: se já confirmou antes, exibe pronto/acompanhamento; senão, confirmar
+    estado = "pronto" if (info and info.get("usuario")) else "confirmar"
 
     sessao = None
     cobranca = None
@@ -2524,6 +2525,31 @@ def avulso_sessao(token: str):
         qr_pix_excedente=qr_pix_excedente,
         sessao_arquivada=bool(linha),
     )
+
+
+@app.route("/avulso/<token>/status")
+def avulso_status(token: str):
+    """Retorna os dados de telemetria em tempo real para a recarga sem conta no celular."""
+    sessao = _sessao_avulsa(token)
+    if sessao is None:
+        return jsonify({"status": "nao_encontrado"})
+    if sessao.is_active:
+        with _state_lock:
+            sm.accrue_energy(sessao)
+    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+    linha = _sessao_arquivada(sessao.session_id)
+    return jsonify({
+        "ativo": sessao.is_active,
+        "concluido": not sessao.is_active,
+        "energia_kwh": f"{cobranca.energia_kwh:.2f}".replace(".", ","),
+        "potencia_kw": f"{sessao.allocated_power_kw:.1f}".replace(".", ","),
+        "duracao_min": f"{cobranca.duracao_min:.0f}",
+        "subtotal_brl": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
+        "tarifa_kwh": f"{cobranca.tarifa_kwh:.4f}".replace(".", ","),
+        "total_brl": f"{cobranca.total_brl:.2f}".replace(".", ","),
+        "estorno_brl": f"{avulso.estorno(cobranca.sinal_brl):.2f}".replace(".", ","),
+        "arquivada": bool(linha),
+    })
 
 
 @app.route("/avulso/<token>/encerrar", methods=["POST"])

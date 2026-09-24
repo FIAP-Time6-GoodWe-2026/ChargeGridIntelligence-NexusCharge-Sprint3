@@ -18,12 +18,39 @@
 .bl-titulo { font-size: var(--fs-2xl); font-weight: var(--fw-bold); line-height: var(--lh-tight);
     color: var(--cor-texto); }
 .bl-sub { font-size: var(--fs-sm); color: var(--cor-texto-secundario); margin-top: var(--sp-1); }
-.bl-card { background: var(--cor-card); border: 1px solid var(--cor-borda);
-    border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); box-shadow: var(--sombra-sm); }
+.bl-card {
+    background: #FFFFFF;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--r-xl, 16px);
+    padding: var(--sp-4) var(--sp-5);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+}
+[data-theme="dark"] .bl-card {
+    background: var(--cor-card);
+    box-shadow: var(--sombra-sm);
+}
 .bl-numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
-.bl-numeros span { display: block; font-size: var(--fs-xs); color: var(--cor-texto-secundario); }
-.bl-numeros strong { display: block; font-size: var(--fs-xl); font-weight: var(--fw-bold);
-    color: var(--cor-texto); font-variant-numeric: tabular-nums; }
+.bl-numeros div {
+    background: #FFFFFF;
+    border: 1.5px solid var(--cor-borda);
+    border-radius: var(--r-md);
+    padding: var(--sp-3);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+[data-theme="dark"] .bl-numeros div {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+}
+.bl-numeros span {
+    display: block; font-size: var(--fs-2xs); font-weight: 600;
+    text-transform: uppercase; color: var(--cor-texto-secundario);
+    letter-spacing: 0.03em;
+}
+.bl-numeros strong {
+    display: block; font-size: 1.65rem; font-weight: 800;
+    color: var(--cor-texto); font-variant-numeric: tabular-nums; margin-top: 4px;
+}
 .bl-linha { display: flex; justify-content: space-between; gap: var(--sp-3);
     padding: var(--sp-2) 0; border-bottom: 1px solid var(--cor-borda); font-size: var(--fs-sm); }
 .bl-linha:last-child { border-bottom: 0; }
@@ -107,15 +134,15 @@
     <div class="bl-card">
         {% if s.is_active %}<p style="margin-bottom: var(--sp-3)"><span class="bl-estado">Em andamento</span></p>{% endif %}
         <div class="bl-numeros">
-            <div><span>Energia</span><strong>{{ cobranca.energia_kwh | brl(2) }} kWh</strong></div>
-            <div><span>Potência</span><strong>{{ s.allocated_power_kw | brl(1) }} kW</strong></div>
-            <div><span>Tempo</span><strong>{{ cobranca.duracao_min | brl(0) }} min</strong></div>
+            <div><span>Energia</span><strong id="bl-val-energia">{{ cobranca.energia_kwh | brl(2) }} kWh</strong></div>
+            <div><span>Potência</span><strong id="bl-val-potencia">{{ s.allocated_power_kw | brl(1) }} kW</strong></div>
+            <div><span>Tempo</span><strong id="bl-val-tempo">{{ cobranca.duracao_min | brl(0) }} min</strong></div>
         </div>
     </div>
 
     <div class="bl-card">
-        <div class="bl-linha"><span>Tarifa</span><strong>R$ {{ cobranca.tarifa_kwh | brl(4) }} / kWh</strong></div>
-        <div class="bl-linha"><span>Consumo{% if s.is_active %} até agora{% endif %}</span><strong>R$ {{ cobranca.subtotal_brl | brl }}</strong></div>
+        <div class="bl-linha"><span>Tarifa</span><strong id="bl-val-tarifa">R$ {{ cobranca.tarifa_kwh | brl(4) }} / kWh</strong></div>
+        <div class="bl-linha"><span>Consumo{% if s.is_active %} até agora{% endif %}</span><strong id="bl-val-consumo">R$ {{ cobranca.subtotal_brl | brl }}</strong></div>
         <div class="bl-linha"><span>Sinal pré-autorizado</span><strong>R$ {{ caucao | brl }}</strong></div>
         {% if not s.is_active %}
         <div class="bl-linha"><span>Sinal abatido</span><strong>- R$ {{ cobranca.sinal_brl | brl }}</strong></div>
@@ -184,6 +211,38 @@
 
 {% block scripts %}
 {% if s and s.is_active %}
-<script>setTimeout(function () { window.location.reload(); }, 6000);</script>
+<script>
+(function() {
+    var token = "{{ token }}";
+    if (!token) return;
+    var pollUrl = "/avulso/" + encodeURIComponent(token) + "/status";
+
+    function atualizar() {
+        fetch(pollUrl)
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data || data.status === "nao_encontrado") return;
+                if (data.concluido) {
+                    window.location.reload();
+                    return;
+                }
+                var elEnergia = document.getElementById("bl-val-energia");
+                var elPotencia = document.getElementById("bl-val-potencia");
+                var elTempo = document.getElementById("bl-val-tempo");
+                var elConsumo = document.getElementById("bl-val-consumo");
+
+                if (elEnergia && data.energia_kwh) elEnergia.textContent = data.energia_kwh + " kWh";
+                if (elPotencia && data.potencia_kw) elPotencia.textContent = data.potencia_kw + " kW";
+                if (elTempo && data.duracao_min) elTempo.textContent = data.duracao_min + " min";
+                if (elConsumo && data.subtotal_brl) elConsumo.textContent = "R$ " + data.subtotal_brl;
+            })
+            .catch(function(err) {
+                console.warn("Erro ao buscar telemetria avulso:", err);
+            });
+    }
+
+    setInterval(atualizar, 2500);
+})();
+</script>
 {% endif %}
 {% endblock %}

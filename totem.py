@@ -87,6 +87,9 @@ def confirmar(token: str, usuario: str) -> bool:
     """
     with _trava:
         _limpar_vencidos(time.time())
+        # Idempotência: se já foi confirmado por este usuário (mesmo já consumido pelo totem), é sucesso!
+        if token in _pareamentos_confirmados:
+            return _pareamentos_confirmados[token]["usuario"] == usuario
         p = _pareamentos.get(token)
         if p is None or (p["usuario"] and p["usuario"] != usuario):
             return False

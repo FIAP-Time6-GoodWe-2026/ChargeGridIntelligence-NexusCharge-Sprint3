@@ -42,24 +42,44 @@
 .cp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .cp-card {
-    background: var(--cor-card); border: 1px solid var(--cor-borda);
-    border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); box-shadow: var(--sombra-sm);
+    background: #FFFFFF;
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--r-xl, 16px);
+    padding: var(--sp-4) var(--sp-5);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+}
+[data-theme="dark"] .cp-card {
+    background: var(--cor-card);
+    box-shadow: var(--sombra-sm);
 }
 .cp-grid-numeros {
     display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-3);
 }
 .cp-tile {
-    background: var(--cor-superficie-2, rgba(0,0,0,0.03));
-    border: 1px solid var(--cor-borda);
+    background: #FFFFFF;
+    border: 1.5px solid var(--cor-borda);
     border-radius: var(--r-md);
-    padding: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 [data-theme="dark"] .cp-tile {
     background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
 }
-.cp-tile span { display: block; font-size: var(--fs-xs); color: var(--cor-texto-secundario); margin-bottom: 2px; }
-.cp-tile strong { display: block; font-size: var(--fs-xl); font-weight: var(--fw-bold); color: var(--cor-texto); font-variant-numeric: tabular-nums; }
-.cp-tile small { font-size: var(--fs-xs); font-weight: var(--fw-regular); color: var(--cor-texto-secundario); margin-left: 2px; }
+.cp-tile span {
+    display: block; font-size: var(--fs-xs); font-weight: 600;
+    color: var(--cor-texto-secundario); text-transform: uppercase;
+    letter-spacing: 0.03em; margin-bottom: 4px;
+}
+.cp-tile strong {
+    display: flex; align-items: baseline; gap: 4px;
+    font-size: 1.85rem; font-weight: 800; color: var(--cor-texto);
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.cp-tile small {
+    font-size: 0.85rem; font-weight: 600; color: var(--cor-texto-secundario);
+}
 
 .cp-badge-status {
     display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs);
@@ -176,7 +196,7 @@
     {% elif estado == 'pronto' %}
 
     {# ── Painel de Telemetria Ao Vivo (visível quando recarga iniciou) ── #}
-    <div id="cp-telemetria" style="{% if not sessao %}display: none;{% endif %} display: flex; flex-direction: column; gap: var(--sp-4);">
+    <div id="cp-telemetria" style="display: {% if sessao and sessao.is_active %}flex{% else %}none{% endif %}; flex-direction: column; gap: var(--sp-4);">
         <div>
             <span id="tel-badge" class="cp-badge-status {% if sessao and sessao.status.value == 'THROTTLED' %}throttle{% endif %}">
                 {% if sessao and sessao.status.value == 'THROTTLED' %}Potência ajustada pela rede{% else %}Em andamento{% endif %}
@@ -228,7 +248,7 @@
     </div>
 
     {# ── Painel de Aguardo (quando confirmado mas recarga ainda não deu start no totem) ── #}
-    <div id="cp-aguardando" style="{% if sessao %}display: none;{% endif %}" class="cp-pulse-box">
+    <div id="cp-aguardando" style="display: {% if sessao and sessao.is_active %}none{% else %}block{% endif %};" class="cp-pulse-box">
         <div class="cp-pulse-ring" aria-hidden="true"></div>
         <h2 class="cp-titulo" style="font-size: 1.25rem;">Conta conectada ao totem!</h2>
         <p class="cp-sub" style="margin-top: var(--sp-2); max-width: 320px; margin-left: auto; margin-right: auto;">
@@ -300,6 +320,10 @@
                             elThrottle.style.display = data.em_throttle ? "block" : "none";
                         }
                     }
+                } else if (data.status === "aguardando") {
+                    if (elAguardando) elAguardando.style.display = "block";
+                    if (elTelemetria) elTelemetria.style.display = "none";
+                    if (elConcluido) elConcluido.style.display = "none";
                 } else if (data.status === "concluido") {
                     if (elAguardando) elAguardando.style.display = "none";
                     if (elTelemetria) elTelemetria.style.display = "none";
