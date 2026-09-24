@@ -190,6 +190,13 @@ body { animation: none; }            /* login não precisa de animação de entr
     margin-bottom: var(--sp-4);
     border: 1px solid rgba(192, 0, 0, 0.15);
 }
+.login-badge-app svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    stroke: currentColor;
+    display: inline-block;
+}
 [data-theme="dark"] .login-badge-app {
     background: rgba(225, 20, 20, 0.14);
     color: #FF5A5A;
@@ -233,19 +240,25 @@ body { animation: none; }            /* login não precisa de animação de entr
     position: relative;
     display: flex;
     align-items: center;
+    width: 100%;
 }
-.campo-icon {
+.campo-wrapper .campo-icon {
     position: absolute;
     left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
     width: 18px;
     height: 18px;
     color: var(--cor-texto-secundario);
     pointer-events: none;
+    z-index: 2;
     transition: color var(--t-fast) var(--ease);
 }
-.campo input {
+.campo-wrapper input[type="text"],
+.campo-wrapper input[type="password"],
+.campo-wrapper input {
     width: 100%;
-    padding: 12px 14px 12px 42px;
+    padding: 12px 14px 12px 44px !important;
     border: 1px solid var(--cor-borda);
     border-radius: 12px;
     background: var(--cor-input-bg);
@@ -255,11 +268,13 @@ body { animation: none; }            /* login não precisa de animação de entr
                 box-shadow var(--t-base) var(--ease),
                 background-color var(--t-base) var(--ease);
 }
-[data-theme="dark"] .campo input {
+[data-theme="dark"] .campo-wrapper input[type="text"],
+[data-theme="dark"] .campo-wrapper input[type="password"],
+[data-theme="dark"] .campo-wrapper input {
     background: rgba(15, 23, 42, 0.6);
     border-color: rgba(255, 255, 255, 0.12);
 }
-.campo input:focus {
+.campo-wrapper input:focus {
     outline: none;
     border-color: var(--cor-primaria);
     box-shadow: 0 0 0 3px rgba(192, 0, 0, 0.18);

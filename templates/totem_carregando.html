@@ -93,7 +93,7 @@
 <div>
     <div class="tr-cabeca">
         <h1 class="tt-titulo">Recarregando</h1>
-        <span class="tt-estado ativo">{% if s.status.value == 'THROTTLED' %}Potência ajustada{% else %}Em andamento{% endif %}</span>
+        <span class="tt-estado ativo" id="tt-badge-estado">{% if s.status.value == 'THROTTLED' %}Potência ajustada{% else %}Em andamento{% endif %}</span>
     </div>
     <p class="tr-carro">
         Carro <span class="tt-placa">{{ s.vehicle_id[:3] }}-{{ s.vehicle_id[3:] }}</span>
@@ -102,10 +102,10 @@
 </div>
 
 <div class="tt-numeros" aria-live="polite">
-    <div class="tt-numero"><span>Energia</span><strong>{{ '%.2f' | format(s.energy_kwh) | replace('.', ',') }}<small>kWh</small></strong></div>
-    <div class="tt-numero"><span>Potência</span><strong>{{ '%.1f' | format(s.allocated_power_kw) | replace('.', ',') }}<small>kW</small></strong></div>
-    <div class="tt-numero"><span>Tempo</span><strong>{{ '%.0f' | format(s.duration_minutes) }}<small>min</small></strong></div>
-    <div class="tt-numero"><span>Até agora</span><strong><small>R$</small> {{ cobranca.subtotal_brl | brl }}</strong></div>
+    <div class="tt-numero"><span>Energia</span><strong><span id="tt-val-energia">{{ '%.2f' | format(s.energy_kwh) | replace('.', ',') }}</span><small>kWh</small></strong></div>
+    <div class="tt-numero"><span>Potência</span><strong><span id="tt-val-potencia">{{ '%.1f' | format(s.allocated_power_kw) | replace('.', ',') }}</span><small>kW</small></strong></div>
+    <div class="tt-numero"><span>Tempo</span><strong><span id="tt-val-tempo">{{ '%.0f' | format(s.duration_minutes) }}</span><small>min</small></strong></div>
+    <div class="tt-numero"><span>Até agora</span><strong><small>R$</small> <span id="tt-val-subtotal">{{ cobranca.subtotal_brl | brl }}</span></strong></div>
 </div>
 
 {% if eh_avulso and qr_celular %}
@@ -163,8 +163,38 @@
 
 {% block scripts %}
 <script>
-    // O totem fica parado nesta tela durante toda a recarga: recarrega os
-    // números a cada 5 s, sem depender de ninguém tocar na tela.
-    setTimeout(function () { window.location.reload(); }, 5000);
+(function () {
+    var pollUrl = "{{ url_for('totem_carregando_status') }}";
+    function atualizar() {
+        fetch(pollUrl)
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data.ativo && data.redirect) {
+                    window.location.href = data.redirect;
+                    return;
+                }
+                if (data.ativo) {
+                    var elEnergia = document.getElementById("tt-val-energia");
+                    var elPotencia = document.getElementById("tt-val-potencia");
+                    var elTempo = document.getElementById("tt-val-tempo");
+                    var elSubtotal = document.getElementById("tt-val-subtotal");
+                    var elBadge = document.getElementById("tt-badge-estado");
+
+                    if (elEnergia) elEnergia.textContent = data.energia;
+                    if (elPotencia) elPotencia.textContent = data.potencia;
+                    if (elTempo) elTempo.textContent = data.tempo;
+                    if (elSubtotal) elSubtotal.textContent = data.subtotal;
+                    if (elBadge) {
+                        elBadge.textContent = data.status_texto;
+                    }
+                }
+            })
+            .catch(function (err) {
+                console.warn("Erro ao atualizar telemetria do totem:", err);
+            });
+    }
+    // Atualização dinâmica contínua sem recarregar a tela
+    setInterval(atualizar, 2000);
+})();
 </script>
 {% endblock %}

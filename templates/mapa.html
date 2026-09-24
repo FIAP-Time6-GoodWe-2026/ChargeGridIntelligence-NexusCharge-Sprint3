@@ -235,6 +235,9 @@
 .station-detail svg { width: 14px; height: 14px; stroke: var(--cor-texto-secundario); }
 .station-detail.available { color: var(--cor-livre-texto); font-weight: 600; }
 .station-detail.available svg { stroke: var(--cor-livre-texto); }
+.station-detail.throttle { color: #F59E0B; font-weight: 600; }
+.station-detail.throttle svg { stroke: #F59E0B; }
+
 
 /* ====================================================================
    FILTER CHIPS
@@ -464,7 +467,7 @@
                         </svg>
                         <span>{{ posto.distancia }}</span>
                     </div>
-                    <div class="station-detail {% if posto.disponivel %}available{% endif %}">
+                    <div class="station-detail {% if posto.em_throttle %}throttle{% elif posto.disponivel %}available{% endif %}">
                         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                         </svg>

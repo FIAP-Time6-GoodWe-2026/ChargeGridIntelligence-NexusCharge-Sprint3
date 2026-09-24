@@ -1849,7 +1849,7 @@ COOKIE_TOTEM: str = "totem_cid"
 ROTAS_TOTEM: set[str] = {
     "totem_home", "totem_configurar", "totem_entrar", "totem_entrar_estado",
     "totem_veiculo", "totem_sem_conta", "totem_sinal", "totem_carregando",
-    "totem_encerrar", "totem_recibo", "totem_sair",
+    "totem_carregando_status", "totem_encerrar", "totem_recibo", "totem_sair",
 }
 # O fluxo com conta no totem reaproveita estas rotas do app: a regra de
 # encerrar e de pagar é a mesma, só a tela muda.
@@ -1858,9 +1858,14 @@ ROTAS_TOTEM_EMPRESTADAS: set[str] = {
 }
 # Valem nos dois modos: são o celular do motorista, não a tela do totem.
 ROTAS_DOS_DOIS_MODOS: set[str] = {
-    "static", "trocar_modo", "celular_parear", "celular_parear_status", "avulso_sessao",
+    "static", "trocar_modo", "celular_parear", "celular_parear_status",
+    "celular_parear_encerrar", "avulso_sessao", "avulso_encerrar", "avulso_pagar_excedente",
 }
-ROTAS_PUBLICAS |= ROTAS_TOTEM | {"trocar_modo", "celular_parear", "celular_parear_status"}
+ROTAS_PUBLICAS |= ROTAS_TOTEM | {
+    "trocar_modo", "celular_parear", "celular_parear_status",
+    "celular_parear_encerrar", "avulso_encerrar", "avulso_pagar_excedente",
+}
+
 
 
 
@@ -2212,6 +2217,31 @@ def celular_parear_status(token: str):
     })
 
 
+@app.route("/celular/parear/<token>/encerrar", methods=["POST"])
+def celular_parear_encerrar(token: str):
+    """Encerra a recarga pelo celular e redireciona para a tela de pagamento do app."""
+    info = totem.info_pareamento(token)
+    if info is None:
+        flash("Pareamento expirado ou não encontrado.", "error")
+        return redirect(url_for("mapa"))
+
+    cid = info["charger_id"]
+    usuario = info.get("usuario") or auth.CONTA_DO_CELULAR
+    sessao = _sessao_conector_usuario(cid, usuario)
+
+    if not sessao or not sessao.is_active:
+        flash("Nenhuma recarga ativa encontrada para este conector.", "warning")
+        return redirect(url_for("celular_parear", token=token))
+
+    with _state_lock:
+        sm.finish_session(sessao.session_id, liberar=False)
+        mb.on_session_end(sessao)
+
+    _entrar_como(usuario)
+    flash("Recarga finalizada! Escolha a forma de pagamento para liberar o conector.", "info")
+    return redirect(url_for("pagamento", session_id=sessao.session_id))
+
+
 
 @app.route("/totem/veiculo", methods=["GET", "POST"])
 def totem_veiculo():
@@ -2340,6 +2370,34 @@ def totem_carregando():
     )
 
 
+@app.route("/totem/carregando/status")
+def totem_carregando_status():
+    """Retorna dados de telemetria da sessão atual do totem em JSON sem recarregar a tela."""
+    sessao = _sessao_do_totem()
+    if sessao is None:
+        return jsonify({"ativo": False, "redirect": url_for("totem_home")})
+    if not sessao.is_active:
+        return jsonify({
+            "ativo": False,
+            "redirect": url_for("pagamento", session_id=sessao.session_id)
+        })
+
+    with _state_lock:
+        sm.accrue_energy(sessao)
+    eh_avulso = avulso.eh_avulso(sessao.owner)
+    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL if eh_avulso else 0.0)
+
+    return jsonify({
+        "ativo": True,
+        "energia": f"{sessao.energy_kwh:.2f}".replace(".", ","),
+        "potencia": f"{sessao.allocated_power_kw:.1f}".replace(".", ","),
+        "tempo": f"{sessao.duration_minutes:.0f}",
+        "subtotal": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
+        "em_throttle": sessao.status.value == "THROTTLED",
+        "status_texto": "Potência ajustada" if sessao.status.value == "THROTTLED" else "Em andamento",
+    })
+
+
 @app.route("/totem/encerrar", methods=["POST"])
 def totem_encerrar():
     """
@@ -2452,12 +2510,74 @@ def avulso_sessao(token: str):
     cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
     linha = _sessao_arquivada(sessao.session_id)
     metodo = linha["metodo_pagto"] if linha else billing.METODO_PIX
+    qr_pix_excedente = None
+    if cobranca.total_brl > 0 and not linha:
+        qr_pix_excedente = qr_svg(
+            f"CGI|AVULSO|{sessao.charger_id}|{cobranca.total_brl:.2f}",
+            rotulo=f"QR Code Pix para pagar o excedente de R$ {cobranca.total_brl:.2f}",
+        )
     return render_template(
         "avulso.html", s=sessao, token=token, cobranca=cobranca,
         caucao=avulso.CAUCAO_BRL, estorno=avulso.estorno(cobranca.sinal_brl),
         posto=POSTOS.get(sessao.station_id, {}),
         metodo_label=billing.rotulo(metodo),
+        qr_pix_excedente=qr_pix_excedente,
+        sessao_arquivada=bool(linha),
     )
+
+
+@app.route("/avulso/<token>/encerrar", methods=["POST"])
+def avulso_encerrar(token: str):
+    """
+    Encerra a recarga avulsa pelo celular.
+
+    Se o consumo for menor ou igual ao sinal de R$ 50,00:
+        Deduz do sinal, agenda o estorno da diferença e libera o conector na hora.
+    Se o consumo ultrapassar o sinal de R$ 50,00:
+        Encerra a medição e exige o pagamento da diferença antes de liberar o conector.
+    """
+    sessao = _sessao_avulsa(token)
+    if not sessao:
+        flash("Recarga não encontrada.", "error")
+        return redirect(url_for("avulso_sessao", token=token))
+
+    if not sessao.is_active:
+        return redirect(url_for("avulso_sessao", token=token))
+
+    with _state_lock:
+        sm.accrue_energy(sessao)
+
+    cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
+
+    if cobranca.total_brl <= 0:
+        metodo = user_session.get("avulso_metodo", billing.METODO_PIX)
+        _acertar_avulso(sessao, metodo)
+        flash("Recarga encerrada com sucesso! Conector liberado e sinal acertado.", "success")
+        return redirect(url_for("avulso_sessao", token=token))
+    else:
+        with _state_lock:
+            sm.finish_session(sessao.session_id, liberar=False)
+            mb.on_session_end(sessao)
+        flash("Recarga encerrada! Pague o excedente para liberar o conector.", "warning")
+        return redirect(url_for("avulso_sessao", token=token))
+
+
+@app.route("/avulso/<token>/pagar-excedente", methods=["POST"])
+def avulso_pagar_excedente(token: str):
+    """Recebe o pagamento do excedente (quando consumo > R$ 50) e libera o conector."""
+    sessao = _sessao_avulsa(token)
+    if not sessao:
+        flash("Recarga não encontrada.", "error")
+        return redirect(url_for("avulso_sessao", token=token))
+
+    if _sessao_arquivada(sessao.session_id):
+        return redirect(url_for("avulso_sessao", token=token))
+
+    metodo = billing.normalizar_metodo(request.form.get("metodo", billing.METODO_PIX))
+    _acertar_avulso(sessao, metodo)
+    flash("Pagamento do excedente confirmado! O conector foi liberado.", "success")
+    return redirect(url_for("avulso_sessao", token=token))
+
 
 
 # ---------------------------------------------------------------------------

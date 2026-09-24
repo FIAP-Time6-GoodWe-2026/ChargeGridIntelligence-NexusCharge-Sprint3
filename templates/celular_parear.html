@@ -115,13 +115,44 @@
 </style>
 {% endblock %}
 
+{% block header %}
+<header class="header">
+    <div class="header-content">
+        <div class="header-brand">
+            <span class="brand-icon" title="NexusCharge Mobile">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+            </span>
+            <div>
+                <h1>NexusCharge Mobile</h1>
+                <div class="header-subtitle">Acompanhamento e controle de recarga</div>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            {% include 'partials/_modo_toggle.html' %}
+            <button class="theme-toggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+                <svg class="icon-sun" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="5" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
 {% block content %}
 <main class="cp">
-    <div class="cp-marca">
-        <svg aria-hidden="true"><use href="#marca-nexus"/></svg>
-        NexusCharge
-    </div>
-
     {% if estado == 'confirmar' %}
     <div>
         <h1 class="cp-titulo">Entrar no totem do {{ charger_id.split('-')[1] }}?</h1>
@@ -183,7 +214,16 @@
             </div>
         </div>
 
-        <p class="cp-nota">Acompanhe em tempo real. O encerramento pode ser feito tocando no botão "Encerrar" na tela do totem.</p>
+        <form method="POST" action="{{ url_for('celular_parear_encerrar', token=token) }}">
+            <button type="submit" class="cp-btn primario" style="background: linear-gradient(135deg, #D41414 0%, #A00000 100%); min-height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="6" y="6" width="12" height="12" rx="1.5"/>
+                </svg>
+                <span>Encerrar recarga e pagar no celular</span>
+            </button>
+        </form>
+
+        <p class="cp-nota">Você pode encerrar aqui pelo celular ou tocar em "Encerrar" na tela do totem.</p>
     </div>
 
     {# ── Painel de Aguardo (quando confirmado mas recarga ainda não deu start no totem) ── #}

@@ -2707,6 +2707,36 @@ class TestTotemComConta:
             assert "Recarregando no Totem" in html_celular
             assert "LUZ9B87" in html_celular
 
+    def test_totem_carregando_status_dinamico(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._entrar_pelo_celular(c)
+            c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+            resp = c.get("/totem/carregando/status")
+            dados = resp.get_json()
+            assert dados["ativo"] is True
+            assert "energia" in dados and "potencia" in dados and "subtotal" in dados
+            assert dados["status_texto"] in ("Em andamento", "Potência ajustada")
+
+    def test_celular_encerrar_e_redirecionar_para_pagamento(self, tmp_path):
+        import re
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            html = c.get("/totem/entrar").get_data(as_text=True)
+            token = re.search(r"/totem/entrar/([\w-]+)/estado", html).group(1)
+            c.post(f"/celular/parear/{token}")
+            c.get(f"/totem/entrar/{token}/estado")
+            c.post("/totem/veiculo", data={"veiculo": "LUZ9B87"})
+            sessao = app_module.sm.list_active()[0]
+            assert sessao.is_active is True
+
+            # Encerra pelo celular
+            resp = c.post(f"/celular/parear/{token}/encerrar")
+            assert resp.status_code == 302
+            assert f"/pagamento/{sessao.session_id}" in resp.headers["Location"]
+            assert sessao.is_active is False
+
     def test_totem_so_inicia_no_proprio_conector(self, tmp_path):
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
@@ -2766,6 +2796,60 @@ class TestTotemSemConta:
             assert "Volta para você" in recibo
             # recarga de segundos cai na taxa mínima, bem abaixo da caução
             assert f"{avulso.estorno(2.00):.2f}".replace(".", ",") in recibo
+
+    def test_avulso_encerrar_no_celular_com_estorno_e_liberar_conector(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            sessao = app_module.sm.list_active()[0]
+            token = sessao.owner.split(":", 1)[1]
+            cid = sessao.charger_id
+
+            # Encerra a recarga pelo celular
+            resp = c.post(f"/avulso/{token}/encerrar")
+            assert resp.status_code == 302
+            assert resp.headers["Location"].endswith(f"/avulso/{token}")
+
+            # Conector deve estar livre imediatamente (pois consumo < R$ 50)
+            assert app_module.sm.is_charger_available(cid) is True
+
+            # Página do celular mostra comprovante e estorno
+            html = c.get(f"/avulso/{token}").get_data(as_text=True)
+            assert "Recarga concluída" in html
+            assert "Volta para você" in html
+
+    def test_avulso_encerrar_no_celular_com_excedente_acima_de_50(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            self._liberar(c)
+            sessao = app_module.sm.list_active()[0]
+            token = sessao.owner.split(":", 1)[1]
+            cid = sessao.charger_id
+
+            # Simula consumo acima de R$ 50 (ex: 65,00)
+            import datetime
+            sessao.tariff_kwh = 1.0
+            sessao.energy_kwh = 65.0
+            sessao.total_cost_brl = 65.0
+            sessao.last_energy_update = datetime.datetime.now()
+
+            # Encerra pelo celular: interrompe a carga, mas conector ainda não é liberado
+            resp = c.post(f"/avulso/{token}/encerrar")
+            assert resp.status_code == 302
+            assert sessao.is_active is False
+            assert app_module.sm.is_charger_available(cid) is False
+
+            # Página avulso mostra saldo excedente a pagar (R$ 15,00)
+            html = c.get(f"/avulso/{token}").get_data(as_text=True)
+            assert "Pagamento do Valor Excedente" in html
+            assert "15,00" in html
+
+            # Confirma pagamento do excedente
+            resp_pagto = c.post(f"/avulso/{token}/pagar-excedente", data={"metodo": "PIX"})
+            assert resp_pagto.status_code == 302
+
+            # Agora sim o conector foi liberado!
+            assert app_module.sm.is_charger_available(cid) is True
 
     def test_sem_conta_nao_ganha_cashback(self, tmp_path):
         app_module = _app_limpo(tmp_path)

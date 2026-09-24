@@ -55,10 +55,44 @@
 </style>
 {% endblock %}
 
+{% block header %}
+<header class="header">
+    <div class="header-content">
+        <div class="header-brand">
+            <span class="brand-icon" title="NexusCharge Mobile">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+            </span>
+            <div>
+                <h1>NexusCharge Mobile</h1>
+                <div class="header-subtitle">Recarga Avulsa · Acompanhamento</div>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            {% include 'partials/_modo_toggle.html' %}
+            <button class="theme-toggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+                <svg class="icon-sun" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="5" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+</header>
+{% endblock %}
+
 {% block content %}
 <main class="bl">
-    <div class="bl-marca"><svg aria-hidden="true"><use href="#marca-nexus"/></svg>NexusCharge</div>
-
     {% if not s %}
     <div class="bl-card">
         <h1 class="bl-titulo">Recarga não encontrada</h1>
@@ -67,7 +101,7 @@
     {% else %}
     <div>
         <h1 class="bl-titulo">{% if s.is_active %}Recarregando{% else %}Recarga concluída{% endif %}</h1>
-        <p class="bl-sub">{{ posto.nome }} · {{ s.charger_id }} · <span style="font-family:ui-monospace,monospace">{{ s.vehicle_id }}</span></p>
+        <p class="bl-sub">{{ posto.nome }} · {{ s.charger_id }} · <span style="font-family:ui-monospace,monospace;font-weight:700;">{{ s.vehicle_id }}</span></p>
     </div>
 
     <div class="bl-card">
@@ -82,10 +116,10 @@
     <div class="bl-card">
         <div class="bl-linha"><span>Tarifa</span><strong>R$ {{ cobranca.tarifa_kwh | brl(4) }} / kWh</strong></div>
         <div class="bl-linha"><span>Consumo{% if s.is_active %} até agora{% endif %}</span><strong>R$ {{ cobranca.subtotal_brl | brl }}</strong></div>
-        <div class="bl-linha"><span>Sinal retido</span><strong>R$ {{ caucao | brl }}</strong></div>
+        <div class="bl-linha"><span>Sinal pré-autorizado</span><strong>R$ {{ caucao | brl }}</strong></div>
         {% if not s.is_active %}
-        <div class="bl-linha"><span>Pagamento</span><strong>{{ metodo_label }}</strong></div>
-        <div class="bl-linha total"><span>{% if cobranca.total_brl > 0 %}Cobrado além do sinal{% else %}A pagar{% endif %}</span><strong>R$ {{ cobranca.total_brl | brl }}</strong></div>
+        <div class="bl-linha"><span>Sinal abatido</span><strong>- R$ {{ cobranca.sinal_brl | brl }}</strong></div>
+        <div class="bl-linha total"><span>{% if cobranca.total_brl > 0 %}Excedente além do sinal{% else %}Saldo a pagar{% endif %}</span><strong>R$ {{ cobranca.total_brl | brl }}</strong></div>
         {% endif %}
     </div>
 
@@ -93,13 +127,50 @@
     <div class="bl-card bl-devolve">
         <span>Volta para você</span>
         <strong>R$ {{ estorno | brl }}</strong>
-        <span>Estornado na mesma forma de pagamento.</span>
+        <span>Estornado automaticamente na mesma forma de pagamento (Pix/cartão). Conector liberado!</span>
     </div>
     {% endif %}
 
+    {# ── Fluxo quando ultrapassou o sinal de R$ 50,00 e precisa pagar o excedente ── #}
+    {% if not s.is_active and not sessao_arquivada and cobranca.total_brl > 0 %}
+    <div class="bl-card" style="border-color: #F59E0B; background: rgba(245, 158, 11, 0.06);">
+        <h3 style="margin: 0 0 8px; color: var(--cor-texto); font-size: var(--fs-md);">Pagamento do Valor Excedente</h3>
+        <p style="font-size: var(--fs-xs); color: var(--cor-texto-secundario); margin-bottom: var(--sp-4);">
+            O consumo ultrapassou o sinal de R$ 50,00. Efetue o pagamento do saldo restante de <strong>R$ {{ cobranca.total_brl | brl }}</strong> para liberar o conector.
+        </p>
+
+        {% if qr_pix_excedente %}
+        <div style="text-align: center; margin-bottom: var(--sp-4);">
+            <div style="background: #fff; padding: 10px; border-radius: 12px; display: inline-block; width: 140px; height: 140px;">
+                {{ qr_pix_excedente | safe }}
+            </div>
+            <p style="font-size: var(--fs-2xs); color: var(--cor-texto-secundario); margin-top: 4px;">Pague via Pix Copia e Cola</p>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('avulso_pagar_excedente', token=token) }}">
+            <input type="hidden" name="metodo" value="PIX">
+            <button type="submit" class="bl-btn" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #fff; border: 0; min-height: 48px; border-radius: 12px; font-weight: 700;">
+                Confirmar pagamento de R$ {{ cobranca.total_brl | brl }} e liberar conector
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    {# ── Ações quando em andamento ── #}
     {% if s.is_active %}
-    <p class="bl-nota bl-atualiza">Para encerrar, use o totem do conector. Esta página se atualiza sozinha.</p>
-    {% else %}
+    <form method="POST" action="{{ url_for('avulso_encerrar', token=token) }}">
+        <button type="submit" class="bl-btn" style="background: linear-gradient(135deg, #D41414 0%, #A00000 100%); color: #fff; border: 0; min-height: 48px; border-radius: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5"/>
+            </svg>
+            <span>Encerrar recarga e liberar conector</span>
+        </button>
+    </form>
+    <p class="bl-nota bl-atualiza">
+        Ao encerrar, o valor consumido será deduzido do sinal de R$ 50,00 e o restante restituído automaticamente.
+    </p>
+    {% elif sessao_arquivada or cobranca.total_brl <= 0 %}
     <button type="button" class="bl-btn" onclick="window.print()">
         <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -113,6 +184,6 @@
 
 {% block scripts %}
 {% if s and s.is_active %}
-<script>setTimeout(function () { window.location.reload(); }, 10000);</script>
+<script>setTimeout(function () { window.location.reload(); }, 6000);</script>
 {% endif %}
 {% endblock %}
