@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} — NexusCharge{% endblock %}
+
+{% block extra_css %}
+<style>
+.erro-container {
+    max-width: 520px;
+    margin: 4rem auto;
+    padding: var(--sp-6) var(--sp-5);
+    text-align: center;
+}
+.erro-card {
+    background: var(--cor-card);
+    border: 1px solid var(--cor-borda);
+    border-radius: var(--r-xl, 20px);
+    padding: var(--sp-7) var(--sp-6);
+    box-shadow: var(--sombra-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-4);
+}
+.erro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    color: var(--cor-primaria);
+    background: rgba(192, 0, 0, 0.09);
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.erro-icone {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(192, 0, 0, 0.1);
+    color: var(--cor-primaria);
+    margin-bottom: var(--sp-2);
+}
+.erro-icone svg {
+    width: 36px;
+    height: 36px;
+}
+.erro-titulo {
+    font-size: var(--fs-2xl);
+    font-weight: var(--fw-bold);
+    color: var(--cor-texto);
+    margin: 0;
+    line-height: var(--lh-tight);
+}
+.erro-desc {
+    font-size: var(--fs-md);
+    color: var(--cor-texto-secundario);
+    line-height: var(--lh-relaxed);
+    margin: 0;
+}
+.erro-acoes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    width: 100%;
+    margin-top: var(--sp-3);
+}
+.erro-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    min-height: 48px;
+    border-radius: var(--r-md);
+    font-size: var(--fs-md);
+    font-weight: var(--fw-bold);
+    text-decoration: none;
+    cursor: pointer;
+    border: 0;
+    transition: transform 0.15s, opacity 0.15s;
+}
+.erro-btn.primario {
+    background: linear-gradient(135deg, #D41414 0%, #A00000 100%);
+    color: #FFFFFF;
+    box-shadow: 0 4px 14px rgba(192, 0, 0, 0.3);
+}
+.erro-btn.secundario {
+    background: var(--cor-superficie-2);
+    border: 1.5px solid var(--cor-borda);
+    color: var(--cor-texto);
+}
+.erro-btn:hover {
+    opacity: 0.95;
+    transform: translateY(-1px);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="erro-container" role="main">
+    <div class="erro-card">
+        <span class="erro-badge">Erro {{ codigo }}</span>
+        <div class="erro-icone" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+        </div>
+        <h1 class="erro-titulo">{{ titulo }}</h1>
+        <p class="erro-desc">{{ mensagem }}</p>
+        <div class="erro-acoes">
+            {% if is_totem %}
+            <a href="{{ url_for('totem_home') }}" class="erro-btn primario">
+                Voltar à tela inicial do Totem
+            </a>
+            {% else %}
+            <a href="{{ url_for('mapa') }}" class="erro-btn primario">
+                Voltar ao Mapa de Postos
+            </a>
+            {% endif %}
+            <button type="button" onclick="window.history.back()" class="erro-btn secundario">
+                Voltar à página anterior
+            </button>
+        </div>
+    </div>
+</main>
+{% endblock %}

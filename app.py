@@ -491,14 +491,26 @@ def _pendencia_do_usuario(usuario: str):
     return None
 
 
+@app.after_request
+def _adicionar_cabecalhos_seguranca(response: Response) -> Response:
+    """Aplica cabeçalhos defensivos HTTP (OWASP / boas práticas de segurança)."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    return response
+
+
 def _destino_seguro(bruto: str | None) -> str:
     """
     Valida o parâmetro `next` do login.
 
-    Só aceita caminhos internos: um `next` absoluto (`//evil.com`) seria um
+    Só aceita caminhos internos: um `next` absoluto (`//evil.com` ou `/\\evil.com`) seria um
     open redirect, transformando a tela de login numa ponte para phishing.
     """
-    if bruto and bruto.startswith("/") and not bruto.startswith("//"):
+    if (bruto and bruto.startswith("/")
+            and not bruto.startswith("//")
+            and not bruto.startswith("/\\")):
         return bruto
     return url_for("mapa")
 
@@ -1937,6 +1949,7 @@ ROTAS_TOTEM: set[str] = {
     "totem_home", "totem_configurar", "totem_entrar", "totem_entrar_estado",
     "totem_veiculo", "totem_sem_conta", "totem_sinal", "totem_carregando",
     "totem_carregando_status", "totem_encerrar", "totem_recibo", "totem_sair",
+    "totem_pagamento_status",
 }
 # O fluxo com conta no totem reaproveita estas rotas do app: a regra de
 # encerrar e de pagar é a mesma, só a tela muda.
@@ -2570,6 +2583,21 @@ def totem_sair():
     return redirect(url_for("totem_home"))
 
 
+@app.route("/totem/pagamento/<session_id>/status")
+def totem_pagamento_status(session_id: str):
+    """
+    Verifica se a sessão exibida no pagamento do totem já foi quitada
+    (por exemplo, paga pelo motorista diretamente no celular).
+    """
+    linha = _sessao_arquivada(session_id)
+    if linha:
+        return jsonify({
+            "paga": True,
+            "redirect": url_for("totem_recibo", session_id=session_id),
+        })
+    return jsonify({"paga": False})
+
+
 # ── Recarga sem conta: o bilhete no celular e o acerto da caução ───────────
 
 def _sessao_avulsa(token: str):
@@ -2903,6 +2931,33 @@ def _seed_demo() -> None:
     _atualizar_carregadores_livres()
     logger.info("Seed de demonstração aplicado: %d sessões ativas.",
                 sm.active_count())
+
+
+# ---------------------------------------------------------------------------
+# Tratamento de erros HTTP defensivo e resiliente
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def _erro_404(e):
+    """Página amigável para recurso não encontrado, no tema e contexto da aplicação."""
+    if request.path.startswith("/api/") or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"erro": "Recurso não encontrado", "codigo": 404}), 404
+    is_totem = _modo() == "totem"
+    return render_template("erro.html", codigo=404, titulo="Página não encontrada",
+                           mensagem="O endereço solicitado não existe ou pode ter expirado.",
+                           is_totem=is_totem), 404
+
+
+@app.errorhandler(500)
+def _erro_500(e):
+    """Página defensiva para erro interno não tratado, mantendo a experiência do usuário."""
+    logger.exception("Erro interno 500 capturado pelo handler global: %s", e)
+    if request.path.startswith("/api/") or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"erro": "Erro interno do servidor", "codigo": 500}), 500
+    is_totem = _modo() == "totem"
+    return render_template("erro.html", codigo=500, titulo="Instabilidade temporária",
+                           mensagem="Ocorreu uma instabilidade inesperada. O sistema de proteção do conector permanece seguro.",
+                           is_totem=is_totem), 500
 
 
 # Aplica o seed ao importar o módulo (vale tanto para `python app.py`

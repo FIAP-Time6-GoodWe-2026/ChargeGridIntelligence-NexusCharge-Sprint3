@@ -77,3 +77,29 @@
 {% set qr_pix = qr_svg %}
 {% include 'partials/_pagamento_totem.html' %}
 {% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var sid = "{{ sessao.session_id }}";
+    if (!sid) return;
+    var pollUrl = "/totem/pagamento/" + encodeURIComponent(sid) + "/status";
+
+    function checarPagamento() {
+        fetch(pollUrl)
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data && data.paga && data.redirect) {
+                    window.location.href = data.redirect;
+                }
+            })
+            .catch(function(err) {
+                console.warn("Erro ao verificar status de pagamento no totem:", err);
+            });
+    }
+
+    // Polling a cada 2.5 segundos para atualizar a tela caso o motorista pague pelo celular
+    setInterval(checarPagamento, 2500);
+})();
+</script>
+{% endblock %}

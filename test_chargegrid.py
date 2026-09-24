@@ -3160,4 +3160,97 @@ class TestRobustezEConcorrencia:
             assert linha is not None
             assert linha["sinal_abatido"] == 6.0
 
+    def test_models_duration_seconds_nao_negativa_com_clock_skew(self):
+        """
+        Duração em segundos nunca pode ser negativa mesmo se houver pequeno
+        desvio de relógio NTP entre start_time e end_time.
+        """
+        import datetime
+        from models import ChargingSession, UserType
+        agora = datetime.datetime.now()
+        s = ChargingSession(
+            charger_id="P1-C1", station_id="P1", vehicle_id="ABC1D23",
+            user_name="Teste", user_type=UserType.STANDARD, requested_power_kw=11.0,
+            start_time=agora, end_time=agora - datetime.timedelta(seconds=2)
+        )
+        assert s.duration_seconds == 0.0
+        assert s.duration_minutes == 0.0
+
+    def test_cabecalhos_seguranca_owasp_injetados(self, tmp_path):
+        """
+        Garante que cabeçalhos OWASP defensivos sejam injetados em todas as respostas HTTP.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            resp = c.get("/login")
+            assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+            assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"
+            assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+            assert "1; mode=block" in resp.headers.get("X-XSS-Protection", "")
+
+    def test_destino_seguro_bloqueia_backslash_open_redirect(self, tmp_path):
+        """
+        Valida que tentativas de bypass com barra invertida (/\\evil.com) sejam barradas.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_request_context():
+            assert app_module._destino_seguro("/\\evil.com") == app_module.url_for("mapa")
+            assert app_module._destino_seguro("//evil.com") == app_module.url_for("mapa")
+            assert app_module._destino_seguro("http://evil.com") == app_module.url_for("mapa")
+            assert app_module._destino_seguro("/mapa") == "/mapa"
+
+    def test_pagina_404_personalizada_html_e_json(self, tmp_path):
+        """
+        Garante que rotas inexistentes renderizem erro 404 elegante ou JSON se requisitado via API.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            # Requisição comum do navegador
+            resp_html = c.get("/rota-inexistente-12345")
+            assert resp_html.status_code == 404
+            assert "Página não encontrada" in resp_html.get_data(as_text=True)
+            assert "Erro 404" in resp_html.get_data(as_text=True)
+
+            # Requisição AJAX / API
+            resp_api = c.get("/api/rota-inexistente-xyz")
+            assert resp_api.status_code == 404
+            dados = resp_api.get_json()
+            assert dados["codigo"] == 404
+            assert dados["erro"] == "Recurso não encontrado"
+
+    def test_totem_pagamento_status_polling_omnichannel(self, tmp_path):
+        """
+        Endpoint /totem/pagamento/<session_id>/status reporta paga=False durante
+        a pendência e paga=True com redirecionamento ao recibo quando arquivada.
+        """
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "OMN1D23"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
+            sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
+
+            # Sessão ainda ativa/não arquivada
+            resp_status = c.get(f"/totem/pagamento/{sessao.session_id}/status")
+            assert resp_status.status_code == 200
+            assert resp_status.get_json()["paga"] is False
+
+            # Simula arquivamento (ex: motorista pagou excedente ou concluiu)
+            app_module.sm.finish_session(sessao.session_id, liberar=True)
+            app_module._arquivar_sessao(
+                sessao=sessao,
+                usuario=sessao.owner,
+                metodo="PIX",
+                sinal=2.0,
+                cashback=0.0,
+            )
+
+            # Agora o polling do totem detecta pagamento concluído
+            resp_paga = c.get(f"/totem/pagamento/{sessao.session_id}/status")
+            assert resp_paga.status_code == 200
+            dados = resp_paga.get_json()
+            assert dados["paga"] is True
+            assert f"/totem/recibo/{sessao.session_id}" in dados["redirect"]
+
+
 

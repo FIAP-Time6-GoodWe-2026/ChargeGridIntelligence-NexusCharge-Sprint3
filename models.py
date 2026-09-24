@@ -162,9 +162,9 @@ class ChargingSession:
         o relógio de energia (status PREPARING).
         """
         if self.end_time is not None:
-            return (self.end_time - self.start_time).total_seconds()
+            return max(0.0, (self.end_time - self.start_time).total_seconds())
         reference = self.last_energy_update or datetime.datetime.now()
-        return (reference - self.start_time).total_seconds()
+        return max(0.0, (reference - self.start_time).total_seconds())
 
     @property
     def duration_minutes(self) -> float:
