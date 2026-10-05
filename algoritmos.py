@@ -22,16 +22,19 @@ Flask, não conhece SQLite e não importa `session_manager` — é por isso que 
 Onde o sistema usa cada algoritmo
 ---------------------------------
     busca_sequencial  → SessionManager.get_session (toda consulta de sessão)
+                        buscar() → campo de busca do /relatorio
                         menu.py, opção 3
     busca_binaria     → menu.py, opção 3 (contraste com a sequencial)
     insertion_sort    → PowerManager.rebalance (toda liberação de conector)
                         menu.py, opção 4
+    merge_sort        → ordenar_por() → cabeçalhos da tabela do /relatorio
+                        menu.py, opções 4 e 6
     bubble_sort       → menu.py, opção 4
     estatisticas      → menu.py, opção 5
 
 Contagem de comparações
 -----------------------
-Todos os quatro algoritmos devolvem quantas comparações realizaram. É o que
+Todos os algoritmos de busca e ordenação devolvem quantas comparações realizaram. É o que
 alimenta a opção 6 do menu ("Comparar algoritmos") e o que permite conferir,
 na prática, que o custo bate com a fórmula fechada de cada um.
 """
@@ -224,6 +227,60 @@ def insertion_sort(colecao: List[ChargingSession], chave: Chave) -> int:
     return comparacoes
 
 
+def merge_sort(colecao: List[ChargingSession], chave: Chave) -> int:
+    """
+    Merge sort — divide a lista ao meio, ordena cada metade recursivamente e
+    intercala as duas metades já ordenadas.
+
+    Ordena **in-place** (reescreve `colecao`; usa listas auxiliares para as
+    metades) e é **estável**: na intercalação o elemento da direita só passa
+    na frente se for *estritamente* menor, então iguais mantêm a ordem
+    original.
+
+    Args:
+        colecao : lista a ordenar, modificada no lugar
+        chave   : extrator do valor de comparação
+
+    Returns:
+        Comparações realizadas — no máximo n·⌈log₂ n⌉.
+
+    Complexidade: **O(n log n)** em todos os casos (melhor, médio e pior).
+
+    De onde vem o crescimento: a recursão divide por 2, então há ⌈log₂ n⌉
+    níveis, e em cada nível a intercalação faz no máximo n comparações (cada
+    comparação coloca um elemento no lugar). Dobrar n multiplica o trabalho
+    por pouco mais de 2, contra ~4 do bubble e do insertion. O preço é
+    memória extra O(n) para as metades.
+    """
+    n = len(colecao)
+    if n < 2:
+        return 0
+    meio = n // 2
+    esquerda = colecao[:meio]
+    direita = colecao[meio:]
+    comparacoes = merge_sort(esquerda, chave) + merge_sort(direita, chave)
+
+    i = j = k = 0
+    while i < len(esquerda) and j < len(direita):
+        comparacoes += 1
+        if chave(direita[j]) < chave(esquerda[i]):
+            colecao[k] = direita[j]
+            j += 1
+        else:
+            colecao[k] = esquerda[i]
+            i += 1
+        k += 1
+    while i < len(esquerda):
+        colecao[k] = esquerda[i]
+        i += 1
+        k += 1
+    while j < len(direita):
+        colecao[k] = direita[j]
+        j += 1
+        k += 1
+    return comparacoes
+
+
 # ---------------------------------------------------------------------------
 # Critérios de ordenação oferecidos ao usuário
 # ---------------------------------------------------------------------------
@@ -234,6 +291,78 @@ CRITERIOS: Dict[str, Tuple[str, Chave]] = {
     "3": ("Custo da sessão",   lambda s: s.total_cost_brl),
     "4": ("Tempo de recarga",  lambda s: s.duration_minutes),
 }
+
+
+# ---------------------------------------------------------------------------
+# Tabela do /relatorio: o que a interface web pede ao backend
+# ---------------------------------------------------------------------------
+
+# Colunas ordenáveis da tabela, por nome. Chave desconhecida cai em "id": o
+# valor vem da URL e uma entrada inválida nunca pode derrubar a página.
+COLUNAS: Dict[str, Chave] = {
+    "id":         lambda s: s.numero,
+    "carregador": lambda s: s.charger_id,
+    "usuario":    lambda s: s.user_name.lower(),
+    "veiculo":    lambda s: s.vehicle_id,
+    "status":     lambda s: s.status.value,
+    "potencia":   lambda s: s.allocated_power_kw,
+    "energia":    lambda s: s.energy_kwh,
+    "tarifa":     lambda s: s.tariff_kwh,
+    "custo":      lambda s: s.total_cost_brl,
+    "duracao":    lambda s: s.duration_minutes,
+}
+
+
+def ordenar_por(colecao: List[ChargingSession], coluna: str,
+                decrescente: bool = False) -> Tuple[List[ChargingSession], int]:
+    """
+    Devolve uma cópia ordenada por `coluna` com `merge_sort`.
+
+    A lista original não é alterada (o relatório não pode reembaralhar o
+    estado do `SessionManager`). Decrescente = ordena crescente e inverte a
+    cópia, mais um passo O(n) que não muda a complexidade: O(n log n).
+
+    Returns:
+        (lista ordenada, comparações do merge_sort)
+    """
+    copia = list(colecao)
+    comparacoes = merge_sort(copia, COLUNAS.get(coluna, COLUNAS["id"]))
+    if decrescente:
+        copia.reverse()
+    return copia, comparacoes
+
+
+def buscar(colecao: List[ChargingSession],
+           termo: str) -> Tuple[List[ChargingSession], int]:
+    """
+    Busca do campo de texto do /relatorio.
+
+    - Número inteiro → `busca_sequencial` pela chave `numero` (a mesma busca
+      que `SessionManager.get_session` usa). Para no primeiro acerto.
+    - Qualquer outro texto → varredura completa por veículo ou conector,
+      porque várias sessões podem casar.
+    - Vazio → devolve tudo, sem comparar nada.
+
+    Os dois caminhos são **O(n)**: no pior caso (ausente, ou varredura) cada
+    sessão é comparada uma vez.
+
+    Returns:
+        (sessões encontradas, comparações realizadas)
+    """
+    termo = termo.strip().lower()
+    if not termo:
+        return list(colecao), 0
+    # isascii: "²".isdigit() é True e int("²") levanta ValueError
+    if termo.isascii() and termo.isdigit():
+        indice, comparacoes = busca_sequencial(colecao, int(termo))
+        return ([colecao[indice]] if indice >= 0 else []), comparacoes
+    achadas: List[ChargingSession] = []
+    comparacoes = 0
+    for sessao in colecao:
+        comparacoes += 1
+        if termo in sessao.vehicle_id.lower() or termo in sessao.charger_id.lower():
+            achadas.append(sessao)
+    return achadas, comparacoes
 
 
 # ---------------------------------------------------------------------------

@@ -1619,60 +1619,186 @@ class TestQRCode:
             assert m.mod[cy + 3][cx + 3], "miolo do localizador"
 
 
-class TestRelatorioOrdenavel:
+class TestRelatorioServerSide:
     """
-    Contrato de markup do qual o JS de ordenação/busca do relatório depende.
-
-    O comportamento em si é verificado no navegador; estes testes guardam o
-    que o Python renderiza — se um `data-valor` sumir, a ordenação numérica
-    passa a comparar zeros em silêncio, sem erro nenhum na tela.
+    Busca e ordenação do /relatorio rodam em Python (algoritmos.buscar e
+    algoritmos.ordenar_por); a página só manda a consulta pela URL.
     """
 
     @pytest.fixture
-    def com_sessao(self, client):
-        """
-        Uma sessão ativa e o HTML do relatório.
-
-        Sob o pytest o seed de demonstração não roda: sem criar a sessão
-        aqui, o `{% if sessoes %}` do template esconde a tabela inteira e os
-        testes verificariam uma tela vazia.
-        """
+    def tres(self, client):
+        """Três sessões com energias distintas, criadas nesta ordem."""
         import app as A
         from models import UserType
-        s = A.sm.create_session("P2-C1", "ABC1D23", "Amanda",
-                                UserType.SUBSCRIBER, 11.0, owner="amanda")
-        A.sm.start_charging(s.session_id, 11.0, 1.2345)
-        A.sm.update_energy(s.session_id, 7.5)
-        return s, client.get("/relatorio").data.decode()
+        casos = [("P2-C1", "AAA1A11", 5.0), ("P2-C2", "BBB2B22", 9.0),
+                 ("P2-C3", "CCC3C33", 1.0)]
+        for conector, placa, kwh in casos:
+            s = A.sm.create_session(conector, placa, "Amanda",
+                                    UserType.SUBSCRIBER, 11.0, owner="amanda")
+            A.sm.start_charging(s.session_id, 11.0, 1.0)
+            A.sm.update_energy(s.session_id, kwh)
+        return client
 
-    def test_cabecalhos_sao_ordenaveis(self, com_sessao):
-        _, html = com_sessao
-        assert html.count('class="ordenavel"') == 10, "as 10 colunas ordenáveis"
-        for col in range(10):
-            assert f'data-col="{col}"' in html
-        assert html.count('data-tipo="num"') == 5, "5 colunas numéricas"
+    @staticmethod
+    def _placas(html):
+        import re
+        return re.findall(r"[A-C]{3}\d[A-C]\d{2}", html.split("<tbody>")[1])
 
-    def test_colunas_numericas_carregam_data_valor(self, com_sessao):
-        s, html = com_sessao
-        linha = html.split(f'data-session-id="{s.session_id}"')[1].split("</tr>")[0]
+    def test_ordena_por_energia_crescente_e_decrescente(self, tres):
+        asc = self._placas(tres.get("/relatorio?ordenar=energia").data.decode())
+        desc = self._placas(tres.get("/relatorio?ordenar=energia&dir=desc").data.decode())
+        assert asc == ["CCC3C33", "AAA1A11", "BBB2B22"]
+        assert desc == asc[::-1]
 
-        # O valor cru precisa estar no atributo, não só formatado no texto
-        assert 'data-valor="11.0"' in linha
-        assert 'data-valor="7.5"' in linha
-        assert 'data-valor="1.2345"' in linha
-        assert linha.count("data-valor") == 5
+    def test_cabecalho_marca_coluna_ativa(self, tres):
+        html = tres.get("/relatorio?ordenar=energia&dir=desc").data.decode()
+        assert html.count('<th class="ordenavel" aria-sort="descending"') == 1
+        assert html.count('<th class="ordenavel"') == 10
 
-    def test_busca_esta_na_tela(self, com_sessao):
-        _, html = com_sessao
-        assert 'id="busca-sessao"' in html
-        assert 'id="contagem-sessoes"' in html
-        assert 'aria-label="Buscar sessão' in html, "campo precisa de rótulo acessível"
+    def test_busca_por_numero_usa_busca_sequencial(self, tres, monkeypatch):
+        import algoritmos
+        chamadas = []
+        original = algoritmos.busca_sequencial
 
-    def test_sem_sessoes_nao_mostra_controles(self, client):
-        """Busca e contagem sobre uma tabela que não existe seria ruído."""
+        def espia(*args, **kw):
+            chamadas.append(args[1])
+            return original(*args, **kw)
+        monkeypatch.setattr(algoritmos, "busca_sequencial", espia)
+        html = tres.get("/relatorio?busca=2").data.decode()
+        assert chamadas == [2]
+        assert self._placas(html) == ["BBB2B22"]
+
+    def test_busca_por_texto_varre_veiculo_e_conector(self, tres):
+        assert self._placas(tres.get("/relatorio?busca=ccc3").data.decode()) == ["CCC3C33"]
+        assert self._placas(tres.get("/relatorio?busca=p2-c1").data.decode()) == ["AAA1A11"]
+
+    def test_busca_sem_resultado_mantem_controles(self, tres):
+        html = tres.get("/relatorio?busca=zzz").data.decode()
+        assert "Nenhuma sessão corresponde à busca" in html
+        assert 'id="busca-sessao"' in html, "o operador precisa conseguir limpar a busca"
+
+    @pytest.mark.parametrize("qs", [
+        "ordenar=__class__", "ordenar=", "dir=sideways", "busca=%C2%B2",
+        "busca=" + "9" * 500, "busca=%00", "fonte=../../etc/passwd",
+        "ordenar=energia&busca=%27%3B--"])
+    def test_entrada_invalida_nunca_quebra(self, tres, qs):
+        assert tres.get("/relatorio?" + qs).status_code == 200
+
+    def test_ordenacao_nao_embaralha_o_estado_do_sistema(self, tres):
+        import app as A
+        antes = [s.numero for s in A.sm.list_all()]
+        tres.get("/relatorio?ordenar=energia&dir=desc")
+        assert [s.numero for s in A.sm.list_all()] == antes
+
+    def test_historico_le_do_sqlite(self, tres):
+        html = tres.get("/relatorio?fonte=historico").data.decode()
+        assert "Nenhuma sessão arquivada" in html
+
+    def test_estatisticas_vem_do_backend(self, tres):
+        html = tres.get("/relatorio").data.decode()
+        assert "15.000</b> kWh" in html
+        assert "(nº 2)" in html, "maior consumo é a segunda sessão criada"
+
+    def test_sem_sessoes_nao_mostra_busca(self, client):
         html = client.get("/relatorio").data.decode()
         assert 'id="busca-sessao"' not in html
         assert "Nenhuma sessão nesta execução" in html
+
+    def test_a_tela_nao_ordena_nem_filtra_em_javascript(self, tres):
+        html = tres.get("/relatorio").data.decode()
+        assert ".sort(" not in html and "dataset.valor" not in html
+
+
+class TestMergeSort:
+    """Merge sort: ordena, é estável e respeita o limite n·⌈log₂ n⌉."""
+
+    @pytest.mark.parametrize("n", [0, 1, 2, 3, 10, 50, 180])
+    def test_ordena_e_respeita_o_limite_de_comparacoes(self, n):
+        import math
+        import random
+
+        import algoritmos
+        rnd = random.Random(n)
+        base = [_sessao(i, rnd.uniform(1, 40), 1, 1) for i in range(1, n + 1)]
+        copia = list(base)
+        comps = algoritmos.merge_sort(copia, lambda s: s.energy_kwh)
+        energias = [s.energy_kwh for s in copia]
+        assert all(energias[i] <= energias[i + 1] for i in range(len(energias) - 1))
+        assert sorted(s.numero for s in copia) == [s.numero for s in base]
+        assert comps <= (n * math.ceil(math.log2(n)) if n > 1 else 0)
+
+    def test_estavel_com_chaves_iguais(self):
+        import algoritmos
+        base = [_sessao(i, 5.0 if i % 2 else 9.0, 1, 1) for i in range(1, 21)]
+        algoritmos.merge_sort(base, lambda s: s.energy_kwh)
+        assert [s.numero for s in base] == (
+            [i for i in range(1, 21) if i % 2] + [i for i in range(1, 21) if not i % 2])
+
+    def test_mesmo_resultado_que_insertion_e_bubble(self):
+        import random
+
+        import algoritmos
+        rnd = random.Random(7)
+        base = [_sessao(i, rnd.choice([1, 2, 3, 4, 5]), 1, 1) for i in range(1, 60)]
+        k = lambda s: s.energy_kwh
+        resultados = []
+        for f in (algoritmos.merge_sort, algoritmos.insertion_sort, algoritmos.bubble_sort):
+            c = list(base)
+            f(c, k)
+            resultados.append([s.numero for s in c])
+        assert resultados[0] == resultados[1] == resultados[2]
+
+    def test_bem_menos_comparacoes_que_bubble(self):
+        import algoritmos
+        base = [_sessao(i, 100 - i, 1, 1) for i in range(1, 181)]
+        k = lambda s: s.energy_kwh
+        assert algoritmos.merge_sort(list(base), k) < algoritmos.bubble_sort(list(base), k) // 10
+
+
+class TestOrdenarPorEBuscar:
+    """Funções de `algoritmos.py` que a tabela do relatório usa."""
+
+    def test_ordenar_por_nao_altera_a_original(self):
+        import algoritmos
+        base = [_sessao(1, 9.0, 5.0, 10), _sessao(2, 3.0, 5.0, 10)]
+        ordenada, comps = algoritmos.ordenar_por(base, "energia")
+        assert [s.numero for s in base] == [1, 2]
+        assert [s.numero for s in ordenada] == [2, 1]
+        assert comps == 1
+
+    def test_ordenar_por_usa_merge_sort(self, monkeypatch):
+        import algoritmos
+        chamadas = []
+        original = algoritmos.merge_sort
+
+        def espia(*args, **kw):
+            chamadas.append(len(args[0]))
+            return original(*args, **kw)
+        monkeypatch.setattr(algoritmos, "merge_sort", espia)
+        algoritmos.ordenar_por([_sessao(2, 1, 1, 1), _sessao(1, 1, 1, 1)], "id")
+        assert chamadas and chamadas[0] == 2
+
+    def test_coluna_desconhecida_cai_em_id(self):
+        import algoritmos
+        base = [_sessao(3, 1, 1, 1), _sessao(1, 1, 1, 1)]
+        assert [s.numero for s in algoritmos.ordenar_por(base, "xx")[0]] == [1, 3]
+
+    def test_busca_numero_ausente_percorre_tudo(self):
+        import algoritmos
+        base = [_sessao(i, 1, 1, 1) for i in range(1, 6)]
+        achadas, comps = algoritmos.buscar(base, "99")
+        assert achadas == [] and comps == 5
+
+    def test_busca_numero_para_no_primeiro_acerto(self):
+        import algoritmos
+        base = [_sessao(i, 1, 1, 1) for i in range(1, 6)]
+        achadas, comps = algoritmos.buscar(base, "2")
+        assert [s.numero for s in achadas] == [2] and comps == 2
+
+    def test_termo_vazio_devolve_tudo_sem_comparar(self):
+        import algoritmos
+        base = [_sessao(1, 1, 1, 1)]
+        assert algoritmos.buscar(base, "  ") == (base, 0)
 
 
 # ===========================================================================

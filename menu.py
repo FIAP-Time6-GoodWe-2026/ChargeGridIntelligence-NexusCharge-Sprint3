@@ -28,6 +28,7 @@ histórico é a camada web, depois do pagamento confirmado.
 from __future__ import annotations
 
 import datetime
+import math
 import sys
 import time
 from typing import List, Optional
@@ -457,6 +458,7 @@ def buscar_sessao(gerenciador: SessionManager) -> None:
 ALGORITMOS_ORDENACAO = {
     "1": "Bubble sort     — O(n²) sempre, exatamente n(n-1)/2 comparações",
     "2": "Insertion sort  — O(n²) pior caso, O(n) se já estiver ordenada",
+    "3": "Merge sort      — O(n log n) sempre, até n·⌈log₂ n⌉ comparações",
 }
 
 
@@ -492,6 +494,11 @@ def ordenar_sessoes(gerenciador: SessionManager) -> None:
         comparacoes = algoritmos.bubble_sort(colecao, chave)
         nome = "Bubble sort"
         esperado = f"  Fórmula n(n-1)/2 = {n * (n - 1) // 2} comparações"
+    elif tecla_algoritmo == "3":
+        comparacoes = algoritmos.merge_sort(colecao, chave)
+        nome = "Merge sort"
+        esperado = (f"  Limite do merge: n·⌈log₂ n⌉ = "
+                    f"{n * math.ceil(math.log2(n))} comparações")
     else:
         comparacoes = algoritmos.insertion_sort(colecao, chave)
         nome = "Insertion sort"
@@ -581,8 +588,9 @@ def comparar_algoritmos(gerenciador: SessionManager) -> None:
     print()
     print("  ORDENAÇÃO por energia — comparações realizadas")
     print(f"  {'n':>6} {'bubble O(n²)':>15} {'n(n-1)/2':>10} "
-          f"{'insertion':>11} {'insertion já ord.':>19} {'n-1':>6}")
-    print("  " + "-" * 72)
+          f"{'insertion':>11} {'insertion já ord.':>19} {'n-1':>6} "
+          f"{'merge O(n log n)':>18}")
+    print("  " + "-" * 91)
     for n in _amostras(len(colecao)):
         base = list(colecao[:n])
 
@@ -595,15 +603,18 @@ def comparar_algoritmos(gerenciador: SessionManager) -> None:
         # Já ordenada: melhor caso do insertion, uma comparação por elemento
         c_melhor = algoritmos.insertion_sort(alvo_insertion, por_energia)
 
+        c_merge = algoritmos.merge_sort(list(base), por_energia)
+
         print(f"  {n:>6} {c_bubble:>15} {n * (n - 1) // 2:>10} "
-              f"{c_insertion:>11} {c_melhor:>19} {n - 1:>6}")
+              f"{c_insertion:>11} {c_melhor:>19} {n - 1:>6} {c_merge:>18}")
 
     # --- TEMPO ---------------------------------------------------------
     n = len(colecao)
     base = list(colecao)
     tempos = {}
     for nome, funcao in (("bubble_sort", algoritmos.bubble_sort),
-                         ("insertion_sort", algoritmos.insertion_sort)):
+                         ("insertion_sort", algoritmos.insertion_sort),
+                         ("merge_sort", algoritmos.merge_sort)):
         alvo = list(base)
         inicio = time.perf_counter()
         funcao(alvo, por_energia)
@@ -616,8 +627,9 @@ def comparar_algoritmos(gerenciador: SessionManager) -> None:
 
     print()
     print("  Leitura: dobrar n multiplica por ~2 o trabalho da busca")
-    print("  sequencial, soma ~1 comparação na binária e multiplica por ~4 o")
-    print("  das duas ordenações — assinatura de O(n), O(log n) e O(n²).")
+    print("  sequencial, soma ~1 comparação na binária, multiplica por ~4 o")
+    print("  de bubble e insertion e por pouco mais de 2 o do merge —")
+    print("  assinatura de O(n), O(log n), O(n²) e O(n log n).")
 
 
 # ---------------------------------------------------------------------------

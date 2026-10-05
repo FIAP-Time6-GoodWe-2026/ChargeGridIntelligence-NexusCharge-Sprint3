@@ -78,23 +78,21 @@
 .report-table tr:hover td { background: var(--cor-fundo); }
 
 /* ── Ordenação e busca da tabela ──────────────────────────────────────
-   Ordenar e filtrar acontecem no cliente: a lista já está renderizada, e
-   uma ida ao servidor para reordenar 200 linhas seria round-trip sem
-   contrapartida. O polling de 2 s atualiza células pelo data-session-id,
-   não recria a tabela — por isso a ordem escolhida sobrevive a ele. */
+   Cabeçalhos e busca são links/GET: quem busca e ordena é o backend Python
+   (algoritmos.buscar e algoritmos.ordenar_por). O polling de 2 s atualiza as
+   células das sessões ativas pelo data-session-id, sem recriar a tabela. */
 .report-table th.ordenavel { padding: 0; }
-.report-table th.ordenavel button {
+.report-table th.ordenavel a {
     width: 100%;
     display: flex; align-items: center; gap: 5px;
     padding: 10px 14px;
-    background: none; border: none;
-    font: inherit; color: inherit;
+    font: inherit; color: inherit; text-decoration: none;
     text-transform: inherit; letter-spacing: inherit;
     text-align: left; cursor: pointer;
     transition: color var(--t-rapida, 0.15s) var(--ease, ease);
 }
-.report-table th.ordenavel button:hover { color: var(--cor-texto); }
-.report-table th.ordenavel button::after {
+.report-table th.ordenavel a:hover { color: var(--cor-texto); }
+.report-table th.ordenavel a::after {
     content: "";
     width: 0; height: 0; margin-left: auto;
     border-left: 3.5px solid transparent;
@@ -104,11 +102,16 @@
     transition: opacity var(--t-rapida, 0.15s) var(--ease, ease),
                 transform var(--t-rapida, 0.15s) var(--ease, ease);
 }
-.report-table th.ordenavel button:hover::after { opacity: 0.35; }
-.report-table th[aria-sort] button { color: var(--cor-texto); }
-.report-table th[aria-sort] button::after { opacity: 1; }
-.report-table th[aria-sort="descending"] button::after { transform: rotate(180deg); }
+.report-table th.ordenavel a:hover::after { opacity: 0.35; }
+.report-table th[aria-sort] a { color: var(--cor-texto); }
+.report-table th[aria-sort] a::after { opacity: 1; }
+.report-table th[aria-sort="descending"] a::after { transform: rotate(180deg); }
 
+.tabela-fonte { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--cor-borda, #ddd); border-radius: 8px; font-size: 0.75rem; }
+.tabela-fonte a { padding: 4px 10px; border-radius: 6px; color: var(--cor-texto-secundario); text-decoration: none; }
+.tabela-fonte a[aria-current] { background: var(--cor-fundo); color: var(--cor-texto); font-weight: 600; }
+.tabela-estatisticas { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 10px 14px; font-size: 0.8rem; color: var(--cor-texto-secundario); border-bottom: 1px solid var(--cor-borda, #ddd); }
+.tabela-estatisticas b { color: var(--cor-texto); }
 .tabela-controles {
     margin-left: auto;
     display: flex; align-items: center; gap: var(--sp-3, 12px);
@@ -305,43 +308,61 @@
         <div class="report-card-header">
             <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             Sessões de Recarga
-            {% if sessoes %}
             <div class="tabela-controles">
-                <label class="tabela-busca">
-                    <svg viewBox="0 0 24 24" stroke-linecap="round">
-                        <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>
-                    </svg>
-                    <input type="search" id="busca-sessao"
-                           placeholder="ID, veículo ou conector"
-                           aria-label="Buscar sessão por ID, veículo ou conector"
-                           autocomplete="off">
-                </label>
-                <span class="tabela-contagem" id="contagem-sessoes" aria-live="polite"></span>
+                <span class="tabela-fonte">
+                    <a href="{{ url_for('relatorio_consolidado') }}"
+                       {% if consulta.fonte == 'memoria' %}aria-current="true"{% endif %}>Nesta execução</a>
+                    <a href="{{ url_for('relatorio_consolidado', fonte='historico') }}"
+                       {% if consulta.fonte == 'historico' %}aria-current="true"{% endif %}>Histórico arquivado</a>
+                </span>
+                {% if consulta.total %}
+                <form method="get" class="tabela-busca-form" role="search">
+                    <input type="hidden" name="ordenar" value="{{ consulta.ordenar }}">
+                    <input type="hidden" name="dir" value="{{ consulta.dir }}">
+                    {% if consulta.fonte == 'historico' %}<input type="hidden" name="fonte" value="historico">{% endif %}
+                    <label class="tabela-busca">
+                        <svg viewBox="0 0 24 24" stroke-linecap="round">
+                            <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>
+                        </svg>
+                        <input type="search" name="busca" id="busca-sessao" value="{{ consulta.busca }}"
+                               placeholder="Nº, veículo ou conector"
+                               aria-label="Buscar sessão por número, veículo ou conector"
+                               maxlength="40" autocomplete="off">
+                    </label>
+                </form>
+                <span class="tabela-contagem" id="contagem-sessoes" aria-live="polite">
+                    {% if consulta.busca %}{{ sessoes|length }} de {{ consulta.total }}{% else %}{{ consulta.total }}{% endif %}
+                    {{ 'sessão' if consulta.total == 1 else 'sessões' }}
+                </span>
+                {% endif %}
             </div>
-            {% endif %}
         </div>
+        {% if consulta.total %}
         {% if sessoes %}
+        <div class="tabela-estatisticas" aria-label="Estatísticas das sessões exibidas">
+            <span><b>{{ estat.total_sessoes }}</b> sessões</span>
+            <span><b>{{ "%.3f"|format(estat.energia_total_kwh) }}</b> kWh</span>
+            <span><b>R$ {{ "%.2f"|format(estat.faturamento_brl) }}</b> faturado</span>
+            <span>ticket médio <b>R$ {{ "%.2f"|format(estat.ticket_medio_brl) }}</b></span>
+            <span>maior consumo <b>{{ "%.3f"|format(estat.maior_consumo_kwh) }} kWh</b> (nº {{ estat.numero_maior_consumo }})</span>
+            <span>menor <b>{{ "%.3f"|format(estat.menor_consumo_kwh) }} kWh</b> (nº {{ estat.numero_menor_consumo }})</span>
+        </div>
         <div style="overflow-x:auto;">
         <table class="report-table">
             <thead>
                 <tr>
-                    <th class="ordenavel" data-tipo="texto" data-col="0"><button type="button">ID</button></th>
-                    <th class="ordenavel" data-tipo="texto" data-col="1"><button type="button">Carregador</button></th>
-                    <th class="ordenavel" data-tipo="texto" data-col="2"><button type="button">Usuário</button></th>
-                    <th class="ordenavel" data-tipo="texto" data-col="3"><button type="button">Veículo</button></th>
-                    <th class="ordenavel" data-tipo="texto" data-col="4"><button type="button">Status</button></th>
-                    <th class="ordenavel" data-tipo="num" data-col="5"><button type="button">Potência</button></th>
-                    <th class="ordenavel" data-tipo="num" data-col="6"><button type="button">Energia</button></th>
-                    <th class="ordenavel" data-tipo="num" data-col="7"><button type="button">Tarifa</button></th>
-                    <th class="ordenavel" data-tipo="num" data-col="8"><button type="button">Custo</button></th>
-                    <th class="ordenavel" data-tipo="num" data-col="9"><button type="button">Duração</button></th>
+                    {% for chave, rotulo in [("id","Nº"),("carregador","Carregador"),("usuario","Usuário"),("veiculo","Veículo"),("status","Status"),("potencia","Potência"),("energia","Energia"),("tarifa","Tarifa"),("custo","Custo"),("duracao","Duração")] %}
+                    <th class="ordenavel"{% if consulta.ordenar == chave %} aria-sort="{{ 'descending' if consulta.dir == 'desc' else 'ascending' }}"{% endif %}>
+                        <a href="{{ url_for('relatorio_consolidado', busca=consulta.busca or None, ordenar=chave, dir=('desc' if consulta.ordenar == chave and consulta.dir == 'asc' else 'asc'), fonte=('historico' if consulta.fonte == 'historico' else None)) }}">{{ rotulo }}</a>
+                    </th>
+                    {% endfor %}
                 </tr>
             </thead>
             <tbody>
             {% for s in sessoes %}
             {% set d = s.to_report_dict() %}
             <tr data-session-id="{{ d.session_id }}">
-                <td><code style="font-size:0.7rem;">{{ d.session_id }}</code></td>
+                <td title="{{ d.session_id }}"><strong>{{ d.numero }}</strong></td>
                 <td>{{ d.charger_id }}</td>
                 <td>
                     {{ d.user_name }}
@@ -353,11 +374,11 @@
                         {{ d.status }}
                     </span>
                 </td>
-                <td class="rep-kw" data-valor="{{ d.allocated_power_kw }}">{{ "%.1f"|format(d.allocated_power_kw) }} kW</td>
-                <td class="rep-energy" data-valor="{{ d.energy_kwh }}">{{ "%.3f"|format(d.energy_kwh) }} kWh</td>
-                <td data-valor="{{ d.tariff_kwh }}">R$ {{ "%.4f"|format(d.tariff_kwh) }}</td>
-                <td class="rep-cost" data-valor="{{ d.total_cost_brl }}"><strong>R$ {{ "%.2f"|format(d.total_cost_brl) }}</strong></td>
-                <td class="rep-min" data-valor="{{ d.duration_min }}">{{ d.duration_min }} min</td>
+                <td class="rep-kw">{{ "%.1f"|format(d.allocated_power_kw) }} kW</td>
+                <td class="rep-energy">{{ "%.3f"|format(d.energy_kwh) }} kWh</td>
+                <td>R$ {{ "%.4f"|format(d.tariff_kwh) }}</td>
+                <td class="rep-cost"><strong>R$ {{ "%.2f"|format(d.total_cost_brl) }}</strong></td>
+                <td class="rep-min">{{ d.duration_min }} min</td>
             </tr>
             {% endfor %}
             </tbody>
@@ -365,7 +386,12 @@
         </div>
         {% else %}
         <div style="padding:32px;text-align:center;color:var(--cor-texto-secundario);">
-            Nenhuma sessão nesta execução do servidor.
+            Nenhuma sessão corresponde à busca.
+        </div>
+        {% endif %}
+        {% else %}
+        <div style="padding:32px;text-align:center;color:var(--cor-texto-secundario);">
+            {% if consulta.fonte == 'historico' %}Nenhuma sessão arquivada no banco.{% else %}Nenhuma sessão nesta execução do servidor.{% endif %}
         </div>
         {% endif %}
     </div>
@@ -409,11 +435,10 @@
 (function () {
     var INTERVAL = 2000;
 
-    function atualizarCelula(linha, seletor, texto, valor, html) {
+    function atualizarCelula(linha, seletor, texto, html) {
         var td = linha.querySelector(seletor);
         if (!td) return;
         if (html) { td.innerHTML = texto; } else { td.textContent = texto; }
-        td.dataset.valor = valor;
     }
 
     function atualizar() {
@@ -425,117 +450,20 @@
                         'tr[data-session-id="' + s.session_id + '"]');
                     if (!row) return;
 
-                    // O data-valor acompanha o texto: sem isso, reordenar
-                    // depois de um polling usaria o número de quando a
-                    // página carregou e as sessões ativas cairiam no lugar
-                    // errado da ordenação.
                     atualizarCelula(row, '.rep-kw',
-                        s.allocated_kw.toFixed(1) + ' kW', s.allocated_kw);
+                        s.allocated_kw.toFixed(1) + ' kW');
                     atualizarCelula(row, '.rep-energy',
-                        s.energy_kwh.toFixed(3) + ' kWh', s.energy_kwh);
+                        s.energy_kwh.toFixed(3) + ' kWh');
                     atualizarCelula(row, '.rep-cost',
-                        '<strong>R$ ' + s.cost_brl.toFixed(2) + '</strong>',
-                        s.cost_brl, true);
+                        '<strong>R$ ' + s.cost_brl.toFixed(2) + '</strong>', true);
                     atualizarCelula(row, '.rep-min',
-                        s.duration_min.toFixed(1) + ' min', s.duration_min);
+                        s.duration_min.toFixed(1) + ' min');
                 });
             })
             .catch(function (e) { console.warn('Polling relatório:', e); });
     }
 
     setInterval(atualizar, INTERVAL);
-}());
-
-/* Ordenação por coluna e busca por ID, veículo ou conector.
-
-   Aqui a ordenação usa o `sort` nativo do JavaScript, e é o certo: nos
-   motores atuais ele é um Timsort, O(n log n), estável e testado por muita
-   gente. O bubble sort escrito à mão existe na entrega da disciplina de
-   Estruturas de Dados, um projeto à parte, onde o objeto de estudo é o
-   algoritmo em si;
-   em produção, reimplementar ordenação é trabalho a mais para chegar num
-   resultado pior. Com 200 sessões a diferença já é de 19.900 comparações
-   contra cerca de 1.500. */
-(function () {
-    var tabela = document.querySelector('.report-table');
-    if (!tabela) return;
-
-    var corpo    = tabela.querySelector('tbody');
-    var busca    = document.getElementById('busca-sessao');
-    var contagem = document.getElementById('contagem-sessoes');
-    var total    = corpo.rows.length;
-    var vazia    = null;
-
-    function valor(linha, col, tipo) {
-        var td = linha.cells[col];
-        if (!td) return tipo === 'num' ? 0 : '';
-        if (tipo === 'num') return parseFloat(td.dataset.valor) || 0;
-        return td.textContent.trim().toLowerCase();
-    }
-
-    function ordenar(th) {
-        var col  = Number(th.dataset.col);
-        var tipo = th.dataset.tipo;
-        var desc = th.getAttribute('aria-sort') === 'ascending';
-
-        tabela.querySelectorAll('th[aria-sort]').forEach(function (outro) {
-            outro.removeAttribute('aria-sort');
-        });
-        th.setAttribute('aria-sort', desc ? 'descending' : 'ascending');
-
-        var linhas = Array.prototype.slice.call(corpo.rows)
-            .filter(function (l) { return l !== vazia; });
-
-        linhas.sort(function (a, b) {
-            var va = valor(a, col, tipo), vb = valor(b, col, tipo);
-            if (va < vb) return desc ? 1 : -1;
-            if (va > vb) return desc ? -1 : 1;
-            return 0;
-        });
-
-        linhas.forEach(function (l) { corpo.appendChild(l); });
-        if (vazia) corpo.appendChild(vazia);
-    }
-
-    function filtrar() {
-        var termo = (busca.value || '').trim().toLowerCase();
-        var vistas = 0;
-
-        Array.prototype.slice.call(corpo.rows).forEach(function (linha) {
-            if (linha === vazia) return;
-            var casa = !termo || linha.textContent.toLowerCase().indexOf(termo) !== -1;
-            linha.hidden = !casa;
-            if (casa) vistas++;
-        });
-
-        if (termo && vistas === 0) {
-            if (!vazia) {
-                vazia = corpo.insertRow();
-                vazia.className = 'tabela-vazia';
-                var td = vazia.insertCell();
-                td.colSpan = tabela.rows[0].cells.length;
-                td.textContent = 'Nenhuma sessão corresponde à busca.';
-            }
-            vazia.hidden = false;
-        } else if (vazia) {
-            vazia.hidden = true;
-        }
-
-        contagem.textContent = termo
-            ? vistas + ' de ' + total + ' sessões'
-            : total + (total === 1 ? ' sessão' : ' sessões');
-    }
-
-    tabela.querySelectorAll('th.ordenavel button').forEach(function (botao) {
-        botao.addEventListener('click', function () {
-            ordenar(botao.parentNode);
-        });
-    });
-
-    if (busca) {
-        busca.addEventListener('input', filtrar);
-        filtrar();
-    }
 }());
 </script>
 {% endblock %}

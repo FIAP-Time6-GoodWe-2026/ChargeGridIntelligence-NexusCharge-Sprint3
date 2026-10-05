@@ -69,7 +69,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 257 testes
+pytest -q          # 287 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -177,9 +177,9 @@ qr.py                   QR Code simulado em SVG (Pix)
    ↑
 app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
-templates/              26 telas e parciais (Modo App e Modo Totem)
+templates/              27 telas e 3 parciais (Modo App e Modo Totem)
 static/                 favicon
-test_chargegrid.py      237 testes automatizados
+test_chargegrid.py      287 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -310,7 +310,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | GET | `/dashboard` | Painel de potência, ocupação e sessões ativas ao vivo |
 | POST | `/dashboard/nova-sessao` | Criação de sessão manual pelo operador |
 | POST | `/dashboard/encerrar` | Encerramento de sessão pelo painel |
-| GET | `/relatorio` | Relatório gerencial e financeiro consolidado |
+| GET | `/relatorio` | Relatório gerencial e financeiro consolidado. Busca e ordenação em Python: `?busca=&ordenar=&dir=&fonte=` |
 | GET | `/modbus-log` | Log de tráfego de frames industriais Modbus TCP |
 | GET | `/testes` · POST `/api/testes/run` | Suíte completa de testes executável no navegador |
 | GET | `/admin/export.csv` | Histórico de sessões em CSV |
@@ -326,7 +326,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**257 testes** em 30 classes. A suíte roda contra um banco temporário por teste,
+**287 testes** em 32 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -364,7 +364,8 @@ foram implementados dentro do sistema e rodam em produção.
 
 | Algoritmo | Big-O | Onde o sistema usa |
 |---|:-:|---|
-| `busca_sequencial` | O(n) | `SessionManager.get_session` — toda consulta de sessão da camada web |
+| `busca_sequencial` | O(n) | `SessionManager.get_session` e o campo de busca do `/relatorio` (`buscar`) |
+| `merge_sort` | O(n log n) | `ordenar_por` — cabeçalhos da tabela do `/relatorio`; opções 4 e 6 do menu |
 | `insertion_sort` | O(n²) / O(n) | `PowerManager.rebalance` — toda vez que um conector é liberado |
 | `busca_binaria` | O(log n) | opção 3 do menu, como contraste medido |
 | `bubble_sort` | O(n²) | opção 4 do menu |

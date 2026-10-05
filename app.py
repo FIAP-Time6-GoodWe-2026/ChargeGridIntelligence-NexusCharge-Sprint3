@@ -45,6 +45,7 @@ import logging
 import os
 import re
 import threading
+from typing import Optional
 
 from flask import (Flask, Response, flash, jsonify, redirect, render_template,
                    request, url_for)
@@ -56,6 +57,7 @@ from flask import session as user_session
 import auth
 import avulso
 import billing
+import algoritmos
 import db
 import reservations
 import totem
@@ -1278,9 +1280,28 @@ def relatorio_consolidado():
     for pid in ["P1", "P2", "P3"]:
         historico_pm_todos.extend(posto_pms[pid].history)
 
+    # Busca e ordenação da tabela rodam em Python (algoritmos.py): a página
+    # só manda ?busca=&ordenar=&dir=&fonte= e recebe a lista já pronta.
+    fonte = "historico" if request.args.get("fonte") == "historico" else "memoria"
+    base = db.carregar_sessoes() if fonte == "historico" else todas
+    consulta = {
+        "busca":   request.args.get("busca", "").strip()[:40],
+        "ordenar": request.args.get("ordenar", "id"),
+        "dir":     "desc" if request.args.get("dir") == "desc" else "asc",
+        "fonte":   fonte,
+        "total":   len(base),
+    }
+    if consulta["ordenar"] not in algoritmos.COLUNAS:
+        consulta["ordenar"] = "id"
+    achadas, _ = algoritmos.buscar(base, consulta["busca"])
+    exibidas, _ = algoritmos.ordenar_por(
+        achadas, consulta["ordenar"], consulta["dir"] == "desc")
+
     return render_template(
         "relatorio_consolidado.html",
-        sessoes=todas,
+        sessoes=exibidas,
+        consulta=consulta,
+        estat=algoritmos.estatisticas(exibidas),
         totais=totais,
         historico_pm=historico_pm_todos,
         reg_snapshot=mb.register_snapshot(),
