@@ -77,7 +77,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 413 testes
+pytest -q          # 414 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -181,7 +181,7 @@ app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
 templates/              29 telas e 3 parciais (Modo App e Modo Totem)
 static/                 favicon
-test_chargegrid.py      413 testes automatizados
+test_chargegrid.py      414 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -371,7 +371,7 @@ Alterações feitas para isso e pontos em aberto: `docs/PONTOS_PARA_O_GRUPO.md`.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**413 testes** em 47 classes. A suíte roda contra um banco temporário por teste,
+**414 testes** em 47 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
