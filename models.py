@@ -139,6 +139,10 @@ class ChargingSession:
     # (e não por número de chamadas), garantindo idempotência.
     last_energy_update: Optional[datetime.datetime] = None
     allocated_power_kw: float = 0.0
+    # Potência medida no conector (ESP32 hoje; MeterValues do OCPP depois) e o
+    # instante da medição. None = sem medidor: a energia segue a alocada.
+    measured_power_kw: Optional[float] = None
+    measured_at: Optional[datetime.datetime] = None
     energy_kwh: float = 0.0
     tariff_kwh: float = 0.0
     total_cost_brl: float = 0.0

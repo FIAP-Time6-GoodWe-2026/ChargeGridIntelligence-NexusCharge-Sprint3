@@ -19,7 +19,7 @@
     color: var(--cor-texto); }
 .bl-sub { font-size: var(--fs-sm); color: var(--cor-texto-secundario); margin-top: var(--sp-1); }
 .bl-card {
-    background: #FFFFFF;
+    background: var(--cor-card);
     border: 1px solid var(--cor-borda);
     border-radius: var(--r-xl, 16px);
     padding: var(--sp-4) var(--sp-5);
@@ -31,7 +31,7 @@
 }
 .bl-numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
 .bl-numeros div {
-    background: #FFFFFF;
+    background: var(--cor-card);
     border: 1.5px solid var(--cor-borda);
     border-radius: var(--r-md);
     padding: var(--sp-3);
@@ -43,12 +43,11 @@
     box-shadow: none;
 }
 .bl-numeros span {
-    display: block; font-size: var(--fs-2xs); font-weight: 600;
-    text-transform: uppercase; color: var(--cor-texto-secundario);
-    letter-spacing: 0.03em;
+    display: block; font-size: var(--fs-xs); font-weight: 600;
+    color: var(--cor-texto-secundario);
 }
 .bl-numeros strong {
-    display: block; font-size: 1.65rem; font-weight: 800;
+    display: block; font-size: clamp(1.15rem, 4.5vw, 1.65rem); font-weight: 800;
     color: var(--cor-texto); font-variant-numeric: tabular-nums; margin-top: 4px;
 }
 .bl-linha { display: flex; justify-content: space-between; gap: var(--sp-3);
@@ -101,7 +100,7 @@
             {% include 'partials/_modo_toggle.html' %}
             <button class="theme-toggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
                 <svg class="icon-sun" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="5" r="5"/>
+                    <circle cx="12" cy="12" r="5"/>
                     <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
                     <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
                     <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
@@ -135,7 +134,7 @@
         {% if s.is_active %}<p style="margin-bottom: var(--sp-3)"><span class="bl-estado">Em andamento</span></p>{% endif %}
         <div class="bl-numeros">
             <div><span>Energia</span><strong id="bl-val-energia">{{ cobranca.energia_kwh | brl(2) }} kWh</strong></div>
-            <div><span>Potência</span><strong id="bl-val-potencia">{{ s.allocated_power_kw | brl(1) }} kW</strong></div>
+            <div><span>Potência</span><strong id="bl-val-potencia">{{ potencia_kw(s) | brl(1) }} kW</strong></div>
             <div><span>Tempo</span><strong id="bl-val-tempo">{{ cobranca.duracao_min | brl(0) }} min</strong></div>
         </div>
     </div>
@@ -160,7 +159,7 @@
 
     {# ── Fluxo quando ultrapassou o sinal de R$ 50,00 e precisa pagar o excedente ── #}
     {% if not s.is_active and not sessao_arquivada and cobranca.total_brl > 0 %}
-    <div class="bl-card" style="border-color: #F59E0B; background: rgba(245, 158, 11, 0.06);">
+    <div class="bl-card" style="border-color: var(--cor-aviso); background: var(--cor-aviso-bg);">
         <h3 style="margin: 0 0 8px; color: var(--cor-texto); font-size: var(--fs-md);">Pagamento do Valor Excedente</h3>
         <p style="font-size: var(--fs-xs); color: var(--cor-texto-secundario); margin-bottom: var(--sp-4);">
             O consumo ultrapassou o sinal de R$ 50,00. Efetue o pagamento do saldo restante de <strong>R$ {{ cobranca.total_brl | brl }}</strong> para liberar o conector.
@@ -177,7 +176,7 @@
 
         <form method="POST" action="{{ url_for('avulso_pagar_excedente', token=token) }}">
             <input type="hidden" name="metodo" value="PIX">
-            <button type="submit" class="bl-btn" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: #fff; border: 0; min-height: 48px; border-radius: 12px; font-weight: 700;">
+            <button type="submit" class="bl-btn" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #fff; border: 0; min-height: 48px; border-radius: 12px; font-weight: 700;">
                 Confirmar pagamento de R$ {{ cobranca.total_brl | brl }} e liberar conector
             </button>
         </form>
@@ -195,7 +194,7 @@
         </button>
     </form>
     <p class="bl-nota bl-atualiza">
-        Ao encerrar, o valor consumido será deduzido do sinal de R$ 50,00 e o restante restituído automaticamente.
+        Recarga pré-paga: termina sozinha ao atingir os R$ 50,00 pagos. Se encerrar antes, o consumo sai do sinal e o restante é devolvido.
     </p>
     {% elif sessao_arquivada or cobranca.total_brl <= 0 %}
     <button type="button" class="bl-btn" onclick="window.print()">

@@ -3,13 +3,15 @@
 
 {% block totem_css %}
 .tb-topo { text-align: center; padding-top: var(--sp-4); }
-.tb-topo svg { width: 96px; height: 96px; margin: 0 auto var(--sp-4); display: block; }
+.tb-topo svg { width: 4.5rem; height: 4.5rem; margin: 0 auto var(--sp-4); display: block; }
 .tb-ok circle { fill: var(--cor-livre); }
 .tb-ok path { stroke: #fff; stroke-width: 7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .tb-devolve { text-align: center; border-color: var(--cor-livre); }
+.tb-devolve.excedente { border-color: var(--cor-borda); }
 .tb-devolve span { display: block; font-size: var(--fs-md); color: var(--cor-texto-secundario); }
 .tb-devolve strong { display: block; font-size: 2.5rem; font-weight: var(--fw-bold);
     color: var(--cor-livre-texto); font-variant-numeric: tabular-nums; margin-top: var(--sp-1); }
+.tb-devolve.excedente strong { color: var(--cor-texto); }
 .tb-celular { display: flex; align-items: center; gap: var(--sp-5); }
 .tb-celular .tt-qr { margin: 0; flex-shrink: 0; }
 .tb-fecha { text-align: center; font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
@@ -55,7 +57,7 @@
 </div>
 
 {% if eh_avulso %}
-<div class="tt-painel tb-devolve">
+<div class="tt-painel tb-devolve {% if estorno <= 0 %}excedente{% endif %}">
     <span>{% if estorno > 0 %}Volta para você{% else %}Consumo acima do sinal{% endif %}</span>
     <strong>R$ {% if estorno > 0 %}{{ estorno | brl }}{% else %}{{ (r.custo_brl - caucao) | brl }}{% endif %}</strong>
     <span>{% if estorno > 0 %}Estornado na mesma forma de pagamento.{% else %}Cobrado na mesma forma de pagamento.{% endif %}</span>

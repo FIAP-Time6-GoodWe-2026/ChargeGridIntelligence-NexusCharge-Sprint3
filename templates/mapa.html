@@ -235,8 +235,8 @@
 .station-detail svg { width: 14px; height: 14px; stroke: var(--cor-texto-secundario); }
 .station-detail.available { color: var(--cor-livre-texto); font-weight: 600; }
 .station-detail.available svg { stroke: var(--cor-livre-texto); }
-.station-detail.throttle { color: #F59E0B; font-weight: 600; }
-.station-detail.throttle svg { stroke: #F59E0B; }
+.station-detail.throttle { color: var(--cor-vip-texto); font-weight: 600; }
+.station-detail.throttle svg { stroke: var(--cor-vip-texto); }
 
 
 /* ====================================================================
@@ -337,7 +337,7 @@
     top: 8px; right: 8px;
     background: var(--cor-ocupado, #EF4444);
     color: #fff;
-    font-size: 0.62rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 99px;
@@ -351,7 +351,7 @@
     border: 1px solid var(--cor-borda);
 }
 
-.legend-title  { font-size: 0.8rem; font-weight: 700; color: var(--cor-texto); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.legend-title  { font-size: 0.85rem; font-weight: 700; color: var(--cor-texto); margin-bottom: 12px; }
 .legend-items  { display: flex; flex-direction: column; gap: 8px; }
 .legend-item   { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--cor-texto-secundario); }
 .legend-pin    { width: 16px; height: 20px; flex-shrink: 0; }
@@ -361,10 +361,11 @@
    ==================================================================== */
 @media (max-width: 1024px) {
     .container { grid-template-columns: 1fr; }
-    .map-container, .map { min-height: 400px; }
+    .map-container, .map, .leaflet-map { min-height: 400px; }
 }
 @media (max-width: 640px) {
     .container { padding: 16px; gap: 16px; }
+    .map-container, .map, .leaflet-map { min-height: 300px; height: 320px; }
     .header { padding: 16px; }
     .header h1 { font-size: 1.1rem; }
 }</style>
@@ -444,7 +445,10 @@
                     <div class="station-name">
                         {{ posto.nome }}
                         {% if posto.em_throttle %}
-                        <span class="throttle-badge">⚡ Throttle ativo</span>
+                        <span class="throttle-badge">
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            Throttle ativo
+                        </span>
                         {% endif %}
                     </div>
                     <span class="station-status {% if not posto.disponivel %}indisponivel{% elif posto.em_throttle %}throttle{% else %}disponivel{% endif %}">
@@ -492,9 +496,17 @@
                 </div>
                 <div class="legend-item">
                     <svg class="legend-pin" viewBox="0 0 44 56" fill="none">
-                        <path d="M22 0C9.85 0 0 9.85 0 22C0 38.5 22 56 22 56C22 56 44 38.5 44 22C44 9.85 34.15 0 22 0Z" fill="#9CA3AF"/>
+                        <path d="M22 0C9.85 0 0 9.85 0 22C0 38.5 22 56 22 56C22 56 44 38.5 44 22C44 9.85 34.15 0 22 0Z" fill="#F59E0B"/>
                         <circle cx="22" cy="22" r="14" fill="white"/>
-                        <path d="M17 17L27 27M27 17L17 27" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M23 12L15 23H21L19 30L27 19H21L23 12Z" fill="#F59E0B"/>
+                    </svg>
+                    <span>Posto com controle dinâmico de carga (throttle)</span>
+                </div>
+                <div class="legend-item">
+                    <svg class="legend-pin" viewBox="0 0 44 56" fill="none">
+                        <path d="M22 0C9.85 0 0 9.85 0 22C0 38.5 22 56 22 56C22 56 44 38.5 44 22C44 9.85 34.15 0 22 0Z" fill="#EF4444"/>
+                        <circle cx="22" cy="22" r="14" fill="white"/>
+                        <path d="M16 16h12v2H16zm0 4h12v2H16zm0 4h8v2h-8z" fill="#EF4444"/>
                     </svg>
                     <span>Posto sem carregadores disponíveis</span>
                 </div>
@@ -519,9 +531,10 @@ if (typeof L === 'undefined') {
     if (el) {
         el.innerHTML =
             '<div style="display:flex;flex-direction:column;align-items:center;' +
-            'justify-content:center;height:100%;min-height:600px;padding:32px;' +
+            'justify-content:center;height:100%;min-height:300px;padding:32px;' +
             'text-align:center;color:var(--cor-texto-secundario);gap:12px;">' +
-            '<div style="font-size:2rem;">\uD83D\uDDFA\uFE0F</div>' +
+            '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>' +
             '<div style="font-weight:700;color:var(--cor-texto);">Mapa indispon\u00edvel offline</div>' +
             '<div style="font-size:0.85rem;max-width:340px;">O mapa interativo precisa de conex\u00e3o com a internet. ' +
             'Use a lista de postos ao lado para navegar at\u00e9 os carregadores.</div>' +
@@ -591,7 +604,7 @@ function iconeInterno(p) {
 
 function svgGota(p) {
     var cor = corStatus(p);
-    var bolt = p.throttle ? '<div class="cg-bolt">\u26A1</div>' : '';
+    var bolt = p.throttle ? '<div class="cg-bolt"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>' : '';
     return ''
       + '<div style="position:relative;width:44px;height:56px;">'
       + bolt

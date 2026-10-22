@@ -21,11 +21,9 @@
     justify-content: space-between !important;
     min-height: 120px !important;
 }
-.tt-numero span {
+.tt-numero > span {
     font-size: 0.85rem !important;
     font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
     color: var(--cor-texto-secundario) !important;
 }
 .tt-numero strong {
@@ -88,8 +86,6 @@
     font-size: 0.75rem !important;
     font-weight: 800 !important;
     color: var(--cor-livre-texto, #10B981) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
 }
 .tr-celular-info {
     flex: 1;
@@ -121,7 +117,7 @@
 .tr-celular-texto {
     font-size: var(--fs-xs);
     color: var(--cor-texto-secundario);
-    line-height: var(--lh-relaxed);
+    line-height: var(--lh-normal);
     margin: 0;
 }
 .tr-celular-texto strong {
@@ -143,7 +139,7 @@
 
 <div class="tt-numeros" aria-live="polite">
     <div class="tt-numero"><span>Energia</span><strong><span id="tt-val-energia">{{ '%.2f' | format(s.energy_kwh) | replace('.', ',') }}</span><small>kWh</small></strong></div>
-    <div class="tt-numero"><span>Potência</span><strong><span id="tt-val-potencia">{{ '%.1f' | format(s.allocated_power_kw) | replace('.', ',') }}</span><small>kW</small></strong></div>
+    <div class="tt-numero"><span>Potência</span><strong><span id="tt-val-potencia">{{ '%.1f' | format(potencia_kw(s)) | replace('.', ',') }}</span><small>kW</small></strong></div>
     <div class="tt-numero"><span>Tempo</span><strong><span id="tt-val-tempo">{{ '%.0f' | format(s.duration_minutes) }}</span><small>min</small></strong></div>
     <div class="tt-numero"><span>Até agora</span><strong><small>R$</small> <span id="tt-val-subtotal">{{ cobranca.subtotal_brl | brl }}</span></strong></div>
 </div>
@@ -162,9 +158,9 @@
             </svg>
             <span>Acompanhe no Celular</span>
         </div>
-        <h3 class="tr-celular-chamada">Leve o status da recarga no bolso</h3>
+        <h2 class="tr-celular-chamada">Leve o status da recarga no bolso</h2>
         <p class="tr-celular-texto">
-            Escaneie este QR Code para monitorar a potência em tempo real e receber seu <strong>comprovante digital com estorno da caução</strong> automaticamente.
+            Escaneie este QR Code para monitorar a potência em tempo real e receber seu <strong>comprovante digital com a devolução do sinal</strong> automaticamente.
         </p>
     </div>
 </div>
@@ -185,6 +181,9 @@
 </div>
 
 <div class="tt-acoes">
+    {% if eh_avulso %}
+    <p class="tt-nota">Recarga pré-paga: termina sozinha ao atingir o valor pago. Se encerrar antes, o restante é devolvido.</p>
+    {% endif %}
     <form method="POST" action="{{ url_for('totem_encerrar') }}">
         <button type="submit" class="tt-btn primario">
             <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

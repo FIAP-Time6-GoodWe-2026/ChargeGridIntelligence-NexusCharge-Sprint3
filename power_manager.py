@@ -166,7 +166,7 @@ class PowerManager:
 
     @limit_kw.setter
     def limit_kw(self, value: float) -> None:
-        if value <= 0:
+        if not math.isfinite(value) or value <= 0:
             raise ValueError("Limite deve ser positivo.")
         logger.info("Limite alterado: %.1f kW → %.1f kW", self._limit, value)
         self._limit = value
@@ -442,6 +442,70 @@ class PowerManager:
         self._history.append(result)
         logger.info("Rebalanceamento: %s", result.message)
         return result
+
+    def reset(self, limit_kw: float = 33.0) -> None:
+        """Restaura o limite nominal e limpa o histórico de decisões do posto."""
+        self._limit = limit_kw
+        self._history.clear()
+
+    def aplicar_orcamento(self, kw: float) -> Optional[AllocationResult]:
+        """
+        Aplica um novo orçamento dinâmico de potência (em kW) ao posto.
+
+        Suporta ajuste bidirecional (telemetria solar / Pico W / demanda predial):
+          - Se o novo orçamento for menor que a potência total alocada nas
+            sessões ativas, redistribui proporcionalmente aos pesos de tipo
+            (`_target_por_peso`) respeitando o piso trifásico de 4,2 kW.
+          - Se o novo orçamento aumentar e houver sessões em THROTTLED,
+            delega para `rebalance()` restaurar potência por prioridade.
+        """
+        val = float(kw)
+        if not math.isfinite(val):
+            raise ValueError("Orçamento deve ser um número finito.")
+        novo = max(POTENCIA_MINIMA_KW, round(val, 2))
+        self.limit_kw = novo
+        sessoes_ativas = self._sm.list_active()
+        if not sessoes_ativas:
+            return None
+
+        carga_atual = self._sm.total_allocated_power_kw()
+        if carga_atual > novo:
+            alvos = self._target_por_peso(sessoes_ativas, novo)
+            events: List[tuple] = []
+            for s in sessoes_ativas:
+                nova = alvos.get(s.session_id, POTENCIA_MINIMA_KW)
+                if nova < s.allocated_power_kw - 0.1:
+                    old = s.allocated_power_kw
+                    self._sm.throttle_session(s.session_id, nova)
+                    events.append((s.session_id, old, nova))
+                elif nova > s.allocated_power_kw + 0.1 and s.status == SessionStatus.THROTTLED:
+                    old = s.allocated_power_kw
+                    self._sm.restore_session(s.session_id, nova)
+                    events.append((s.session_id, old, nova))
+            if not events:
+                return None
+            carga_apos = self._sm.total_allocated_power_kw()
+            result = AllocationResult(
+                granted_kw=0.0,
+                redistributed=True,
+                severity="warning",
+                affected_sessions=[e[0] for e in events],
+                load_before_kw=carga_atual,
+                load_after_kw=carga_apos,
+                limit_kw=self._limit,
+                occupancy_pct=round((carga_apos / self._limit) * 100, 1),
+                throttle_events=events,
+                message=(
+                    f"Orçamento dinâmico ajustado para {self._limit:.1f} kW: "
+                    f"{len(events)} sessão(ões) reajustadas "
+                    f"(carga: {carga_apos:.1f}/{self._limit:.1f} kW)"
+                ),
+            )
+            self._history.append(result)
+            logger.info("Orçamento dinâmico: %s", result.message)
+            return result
+
+        return self.rebalance()
 
     # ------------------------------------------------------------------
     # Status da instalação

@@ -107,68 +107,69 @@ def gerar(n: int, dias: int = 45) -> int:
     agora = datetime.datetime.now()
     inseridas = 0
 
-    for _ in range(n):
-        hora = random.choices(range(24), weights=PESO_HORA, k=1)[0]
-        inicio = (agora
-                  - datetime.timedelta(days=random.randint(0, dias - 1))
-                  ).replace(hour=hora,
-                            minute=random.choice([0, 5, 10, 15, 20, 25, 30,
-                                                  35, 40, 45, 50, 55]),
-                            second=0, microsecond=0)
+    with db.transaction() as conn:
+        for _ in range(n):
+            hora = random.choices(range(24), weights=PESO_HORA, k=1)[0]
+            inicio = (agora
+                      - datetime.timedelta(days=random.randint(0, dias - 1))
+                      ).replace(hour=hora,
+                                minute=random.choice([0, 5, 10, 15, 20, 25, 30,
+                                                      35, 40, 45, 50, 55]),
+                                second=0, microsecond=0)
 
-        # Ocupação é maior nos horários de pico — é o que dispara o eixo de
-        # demanda da tarifa.
-        ocupacao = min(0.95, max(0.05, PESO_HORA[hora] / 45 + random.uniform(-0.12, 0.12)))
+            # Ocupação é maior nos horários de pico — é o que dispara o eixo de
+            # demanda da tarifa.
+            ocupacao = min(0.95, max(0.05, PESO_HORA[hora] / 45 + random.uniform(-0.12, 0.12)))
 
-        em_throttle = random.random() < PROB_THROTTLE
-        potencia = (round(random.uniform(4.2, 9.5), 1) if em_throttle
-                    else round(random.uniform(9.6, 11.0), 1))
+            em_throttle = random.random() < PROB_THROTTLE
+            potencia = (round(random.uniform(4.2, 9.5), 1) if em_throttle
+                        else round(random.uniform(9.6, 11.0), 1))
 
-        duracao_min = round(random.triangular(12, 240, 48), 1)
-        energia = round(potencia * duracao_min / 60.0, 3)
+            duracao_min = round(random.triangular(12, 240, 48), 1)
+            energia = round(potencia * duracao_min / 60.0, 3)
 
-        categoria = random.choice(CATEGORIAS)
-        tarifa = _tarifa(hora, categoria, ocupacao)
-        custo = max(round(energia * tarifa, 2), TAXA_MINIMA_SESSAO)
+            categoria = random.choice(CATEGORIAS)
+            tarifa = _tarifa(hora, categoria, ocupacao)
+            custo = max(round(energia * tarifa, 2), TAXA_MINIMA_SESSAO)
 
-        teve_reserva = random.random() < PROB_RESERVA
-        sinal = round(min(SINAL_RESERVA, custo), 2) if teve_reserva else 0.0
-        pago = round(custo - sinal, 2)
+            teve_reserva = random.random() < PROB_RESERVA
+            sinal = round(min(SINAL_RESERVA, custo), 2) if teve_reserva else 0.0
+            pago = round(custo - sinal, 2)
 
-        metodo = random.choice(METODOS)
-        cashback = round(pago * CASHBACK, 2) if metodo == "NEXUSCOIN" else 0.0
+            metodo = random.choice(METODOS)
+            cashback = round(pago * CASHBACK, 2) if metodo == "NEXUSCOIN" else 0.0
 
-        posto = random.choice(list(POSTOS))
-        fim = inicio + datetime.timedelta(minutes=duracao_min)
+            posto = random.choice(list(POSTOS))
+            fim = inicio + datetime.timedelta(minutes=duracao_min)
 
-        db.execute(
-            "INSERT OR IGNORE INTO sessoes ("
-            " session_id, usuario, charger_id, station_id, vehicle_id, user_name,"
-            " user_type, inicio, fim, hora_inicio, duracao_min, potencia_kw,"
-            " energia_kwh, tarifa_kwh, custo_brl, metodo_pagto, sinal_abatido,"
-            " cashback_nc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                f"CGI-{uuid.uuid4().hex[:8].upper()}",
-                "sintetico",
-                f"{posto}-{random.choice(CONECTORES)}",
-                posto,
-                _placa(),
-                "Histórico sintético",
-                categoria.value,
-                inicio.strftime("%Y-%m-%d %H:%M:%S"),
-                fim.strftime("%Y-%m-%d %H:%M:%S"),
-                hora,
-                duracao_min,
-                potencia,
-                energia,
-                tarifa,
-                custo,
-                metodo,
-                sinal,
-                cashback,
-            ),
-        )
-        inseridas += 1
+            conn.execute(
+                "INSERT OR IGNORE INTO sessoes ("
+                " session_id, usuario, charger_id, station_id, vehicle_id, user_name,"
+                " user_type, inicio, fim, hora_inicio, duracao_min, potencia_kw,"
+                " energia_kwh, tarifa_kwh, custo_brl, metodo_pagto, sinal_abatido,"
+                " cashback_nc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    f"CGI-{uuid.uuid4().hex[:8].upper()}",
+                    "sintetico",
+                    f"{posto}-{random.choice(CONECTORES)}",
+                    posto,
+                    _placa(),
+                    "Histórico sintético",
+                    categoria.value,
+                    inicio.strftime("%Y-%m-%d %H:%M:%S"),
+                    fim.strftime("%Y-%m-%d %H:%M:%S"),
+                    hora,
+                    duracao_min,
+                    potencia,
+                    energia,
+                    tarifa,
+                    custo,
+                    metodo,
+                    sinal,
+                    cashback,
+                ),
+            )
+            inseridas += 1
 
     return inseridas
 

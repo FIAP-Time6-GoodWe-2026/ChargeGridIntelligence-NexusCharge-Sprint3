@@ -245,12 +245,10 @@
 
 .form-group label {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--cor-texto-secundario);
     margin-bottom: 5px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 .form-group select,
 .form-group input {
@@ -331,7 +329,7 @@
 .frame-dir  { font-weight: 700; }
 .frame-dir.tx-label { color: var(--cor-info-texto); }
 .frame-dir.rx-label { color: var(--cor-livre-texto); }
-.frame-hex  { color: var(--cor-texto-secundario); font-size: 0.68rem; margin-top: 2px; }
+.frame-hex  { color: var(--cor-texto-secundario); font-size: 0.6875rem; margin-top: 2px; }
 .frame-desc { color: var(--cor-texto); }
 
 /* ── HISTÓRICO DE DECISÕES ──────────────────────────────── */
@@ -399,7 +397,7 @@
     gap: 6px;
 }
 .posto-id-badge {
-    font-size: 0.65rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 5px;
@@ -418,12 +416,10 @@
     color: var(--cor-texto);
     line-height: 1.1;
 }
-.posto-metric-val .unit { font-size: 0.65rem; font-weight: 400; color: var(--cor-texto-secundario); }
+.posto-metric-val .unit { font-size: 0.6875rem; font-weight: 400; color: var(--cor-texto-secundario); }
 .posto-metric-lbl {
-    font-size: 0.65rem;
+    font-size: 0.6875rem;
     color: var(--cor-texto-secundario);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     margin-top: 2px;
 }
 .posto-metric-val.danger  { color: var(--cor-ocupado-texto); }
@@ -449,17 +445,20 @@
 .posto-bar-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.65rem;
+    font-size: 0.6875rem;
     color: var(--cor-texto-secundario);
     margin-bottom: 4px;
 }
 .throttle-badge-sm {
-    font-size: 0.62rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.6875rem;
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 99px;
     background: rgba(245,158,11,0.18);
-    color: #D97706;
+    color: var(--cor-vip-texto);
     text-transform: uppercase;
 }
 [data-theme="dark"] .throttle-badge-sm { background: rgba(245,158,11,0.22); color: #FCD34D; }
@@ -495,14 +494,15 @@
     .header-nav-dash .live-indicator { display: none; }
     .header-content { flex-wrap: wrap; gap: var(--sp-2); }
     .header-brand h1 { font-size: var(--fs-lg); }
+    .form-group select, .form-group input { font-size: 1rem; }
 
-    /* Cards de sessão empilhados no celular: nome e placa sem cortes,
-       potência e custo embaixo e botão Encerrar em largura total */
+    /* Cards de sessão em 2 colunas no topo (ícone + dados) e barra de ações
+       ocupando a linha inteira abaixo: nome e placa sem cortes e sem ícone órfão */
     .session-card {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 10px;
+        display: grid;
+        grid-template-columns: 38px 1fr;
+        align-items: start;
+        gap: 10px 12px;
         padding: 12px 14px;
     }
     .session-info {
@@ -516,6 +516,7 @@
         text-overflow: unset;
     }
     .session-actions {
+        grid-column: 1 / -1;
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -644,7 +645,10 @@
                             {{ p.nome }}
                         </div>
                         {% if p.em_throttle %}
-                        <span class="throttle-badge-sm">⚡ throttle</span>
+                        <span class="throttle-badge-sm">
+                            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            throttle
+                        </span>
                         {% endif %}
                     </div>
                     <div class="posto-metrics">
@@ -705,7 +709,10 @@
                             <span class="posto-grupo-nome">{{ posto.nome }}</span>
                             <span class="posto-grupo-id">{{ posto.id }}</span>
                             {% if posto.em_throttle %}
-                            <span class="badge badge-yellow">⚡ Throttle</span>
+                            <span class="badge badge-yellow" style="display:inline-flex;align-items:center;gap:3px;">
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                Throttle
+                            </span>
                             {% endif %}
                         </div>
                         <div class="posto-grupo-power">
@@ -736,7 +743,7 @@
                                 </div>
                             </div>
                             <div class="session-actions">
-                                <div class="session-kw">{{ "%.1f"|format(s.allocated_power_kw) }} kW</div>
+                                <div class="session-kw">{{ "%.2f"|format(s.allocated_power_kw) if ((s.allocated_power_kw * 100)|round|int % 10 != 0) else "%.1f"|format(s.allocated_power_kw) }} kW</div>
                                 <div class="session-cost">R$ {{ "%.2f"|format(s.total_cost_brl) }} · {{ "%.3f"|format(s.energy_kwh) }} kWh</div>
                                 <form method="POST" action="{{ url_for('dashboard_encerrar') }}" style="margin:0;">
                                     <input type="hidden" name="session_id" value="{{ s.session_id }}">
@@ -787,8 +794,8 @@
             <form method="POST" action="{{ url_for('dashboard_nova_sessao') }}">
                 <div class="form-grid">
                     <div class="form-group form-full">
-                        <label>Carregador</label>
-                        <select name="charger_id" required>
+                        <label for="dash-charger">Carregador</label>
+                        <select id="dash-charger" name="charger_id" required>
                             <option value="">Selecione...</option>
                             {% for cid in disponiveis %}
                             <option value="{{ cid }}">{{ cid }}</option>
@@ -801,28 +808,28 @@
                         {% endif %}
                     </div>
                     <div class="form-group">
-                        <label>Placa</label>
-                        <input type="text" name="vehicle_id" placeholder="ABC-1234" maxlength="8" required>
+                        <label for="dash-placa">Placa</label>
+                        <input type="text" id="dash-placa" name="vehicle_id" placeholder="ABC-1234" maxlength="8" required>
                     </div>
                     <div class="form-group">
-                        <label>Tipo de usuário</label>
-                        <select name="user_type">
+                        <label for="dash-tipo">Tipo de usuário</label>
+                        <select id="dash-tipo" name="user_type">
                             <option value="P">Padrão</option>
                             <option value="A">Assinante (−15%)</option>
                             <option value="C">Corporativo (−10%)</option>
                         </select>
                     </div>
                     <div class="form-group form-full">
-                        <label>Nome do motorista</label>
-                        <input type="text" name="user_name" placeholder="Nome do condutor">
+                        <label for="dash-nome">Nome do motorista</label>
+                        <input type="text" id="dash-nome" name="user_name" placeholder="Nome do condutor">
                     </div>
                     <div class="form-group">
-                        <label>Hora de início</label>
-                        <input type="number" name="hora" min="0" max="23" placeholder="Agora">
+                        <label for="dash-hora">Hora de início</label>
+                        <input type="number" id="dash-hora" name="hora" min="0" max="23" placeholder="Agora">
                     </div>
                     <div class="form-group">
-                        <label>Potência (kW)</label>
-                        <select name="potencia">
+                        <label for="dash-potencia">Potência (kW)</label>
+                        <select id="dash-potencia" name="potencia">
                             <option value="11.0">11.0 kW (máx)</option>
                             <option value="8.0">8.0 kW</option>
                             <option value="6.0">6.0 kW</option>
@@ -847,6 +854,7 @@
             </span>
         </div>
         <div class="card-body" style="padding:0;">
+            <div class="tabela-scroll" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
             <table class="tariff-table">
                 <thead>
                     <tr>
@@ -867,6 +875,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
@@ -922,10 +931,33 @@
         if (el) el.innerHTML = html;
     }
 
+    function formatKw(val) {
+        return (Math.round(val * 100) % 10 !== 0) ? val.toFixed(2) : val.toFixed(1);
+    }
+
+    // Quando entra ou sai uma sessão, a lista por posto é refeita sem
+    // recarregar a página (só o #session-list é trocado; a rolagem fica).
+    var ultimoTotalAtivas = null;
+    function atualizarListaDeSessoes() {
+        fetch(window.location.pathname)
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var nova = new DOMParser().parseFromString(html, 'text/html')
+                                         .getElementById('session-list');
+                var atual = document.getElementById('session-list');
+                if (nova && atual) atual.innerHTML = nova.innerHTML;
+            })
+            .catch(function() {});
+    }
+
     function fetchStatus() {
         fetch('/api/status')
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (ultimoTotalAtivas !== null && data.total_ativas !== ultimoTotalAtivas) {
+                    atualizarListaDeSessoes();
+                }
+                ultimoTotalAtivas = data.total_ativas;
                 // ── Resumo global ────────────────────────────────────
                 setEl('global-em-uso',
                     data.potencia_em_uso.toFixed(1) + '<span class="metric-unit"> kW</span>');
@@ -954,6 +986,8 @@
                         // Valores numéricos
                         setEl('posto-' + pid + '-uso',
                             p.em_uso_kw.toFixed(1) + '<span class="unit"> kW</span>');
+                        setEl('posto-' + pid + '-limite',
+                            p.limite_kw.toFixed(1) + '<span class="unit"> kW</span>');
                         setEl('posto-' + pid + '-disp',
                             p.disponivel_kw.toFixed(1) + '<span class="unit"> kW</span>');
                         setEl('posto-' + pid + '-pct', p.ocupacao_pct + '%');
@@ -974,11 +1008,21 @@
                     });
                 }
 
-                // ── Sessões ativas — minutos, custo, energia e potência ──
+                // ── Sessões ativas — minutos, custo, energia, potência e status ──
                 data.sessoes_ativas.forEach(function(s) {
                     var card = document.querySelector(
                         '.session-card[data-session-id="' + s.session_id + '"]');
                     if (!card) return;
+
+                    var stLower = (s.status || 'CHARGING').toLowerCase();
+                    card.className = 'session-card ' + stLower;
+                    var iconEl = card.querySelector('.session-icon');
+                    if (iconEl) iconEl.className = 'session-icon ' + stLower;
+                    var stBadge = card.querySelector('.session-badges .badge');
+                    if (stBadge) {
+                        stBadge.textContent = s.status;
+                        stBadge.className = 'badge ' + (s.status === 'THROTTLED' ? 'badge-yellow' : 'badge-green');
+                    }
 
                     // Minutos de recarga (atualiza em tempo real)
                     var minEl = card.querySelector('.session-min');
@@ -993,7 +1037,7 @@
 
                     // Potência alocada (pode mudar com throttle/rebalance)
                     var kwEl = card.querySelector('.session-kw');
-                    if (kwEl) kwEl.textContent = s.allocated_kw.toFixed(1) + ' kW';
+                    if (kwEl) kwEl.textContent = formatKw(s.allocated_kw) + ' kW';
                 });
 
                 // ── Timestamp ─────────────────────────────────────────

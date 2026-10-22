@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Totem físico (ESP32) — ChargeGrid Intelligence{% endblock %}
+
+{% block corpo_classe %}leitura{% endblock %}
+
+{% block extra_css %}
+<style>
+/* =============================================================================
+   TOTEM FÍSICO — estado ao vivo das 3 portas lidas pelo ESP32 (Fase 1).
+   Cor sozinha não carrega o estado: cada card repete o estado em texto.
+   ============================================================================= */
+.container { max-width: var(--rail); margin: 0 auto; padding: var(--sp-5) var(--sp-4); }
+.page-title { font-size: 1.4rem; font-weight: 700; color: var(--cor-texto); margin-bottom: 4px; }
+.page-sub   { font-size: 0.85rem; color: var(--cor-texto-secundario); margin-bottom: var(--sp-5); }
+
+.conexao {
+    display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center;
+    padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-5);
+    background: var(--cor-card); border: 1px solid var(--cor-borda);
+    border-radius: var(--r-md);
+}
+.conexao .estado-conexao { font-weight: 700; }
+.conexao .estado-conexao.on  { color: var(--cor-livre-dark); }
+.conexao .estado-conexao.off { color: var(--cor-ocupado); }
+.conexao .detalhe { color: var(--cor-texto-secundario); font-size: 0.85rem; }
+
+.portas {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-3); margin-bottom: var(--sp-5);
+}
+.porta {
+    padding: var(--sp-4); background: var(--cor-card);
+    border: 1px solid var(--cor-borda); border-left-width: 6px;
+    border-radius: var(--r-md);
+}
+.porta .nome { display: block; font-weight: 700; }
+.porta .conector { display: block; color: var(--cor-texto-secundario); font-size: 0.85rem; }
+.porta .estado { display: block; margin: var(--sp-3) 0 var(--sp-1); font-size: 1.25rem; font-weight: 700; }
+.porta .corrente { font-variant-numeric: tabular-nums; color: var(--cor-texto-secundario); }
+.porta[data-estado="livre"]       { border-left-color: var(--cor-livre); }
+.porta[data-estado="plugada"]     { border-left-color: var(--cor-info); }
+.porta[data-estado="sem_leitura"] { border-left-color: var(--cor-aviso); }
+.porta[data-estado="offline"],
+.porta[data-estado="sem_dados"]   { border-left-color: var(--cor-borda); }
+
+.posto-resumo {
+    padding: var(--sp-4); background: var(--cor-card);
+    border: 1px solid var(--cor-borda); border-radius: var(--r-md);
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) { .portas { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="container">
+    <h1 class="page-title">Totem físico — {{ posto.nome }}</h1>
+    <p class="page-sub">Leitura das 3 portas feita pelo ESP32. Plugar abre a identificação no totem; retirar o cabo encerra a recarga.</p>
+
+    <section class="conexao" aria-live="polite">
+        <span class="estado-conexao off" id="conexao">Aguardando o ESP32…</span>
+        <span class="detalhe" id="detalhe-conexao"></span>
+    </section>
+
+    <section class="portas" aria-label="Portas do totem">
+        {% for n in (1, 2, 3) %}
+        <article class="porta" id="porta-{{ n }}" data-estado="sem_dados">
+            <span class="nome">Porta {{ n }}</span>
+            <span class="conector" id="conector-{{ n }}">—</span>
+            <span class="estado" id="estado-{{ n }}">Sem dados</span>
+            <span class="corrente" id="corrente-{{ n }}"></span>
+        </article>
+        {% endfor %}
+    </section>
+
+    <section class="posto-resumo">
+        <strong>{{ posto.nome }}</strong> —
+        <span id="resumo-posto">carregando…</span>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var ROTULOS = {
+        livre: 'Livre', plugada: 'Dispositivo plugado',
+        sem_leitura: 'Sem leitura do sensor', offline: 'ESP32 offline',
+        sem_dados: 'Sem dados'
+    };
+
+    function atualizar(dados) {
+        var conexao = document.getElementById('conexao');
+        var detalhe = document.getElementById('detalhe-conexao');
+        conexao.textContent = dados.online ? 'ESP32 online' : 'ESP32 offline';
+        conexao.className = 'estado-conexao ' + (dados.online ? 'on' : 'off');
+        var partes = [];
+        if (dados.firmware) partes.push('firmware ' + dados.firmware);
+        if (dados.ultimo_contato) partes.push('último contato ' + dados.ultimo_contato);
+        detalhe.textContent = partes.join(' · ');
+
+        dados.portas.forEach(function (p) {
+            var card = document.getElementById('porta-' + p.porta);
+            if (!card) return;
+            card.setAttribute('data-estado', p.estado);
+            document.getElementById('conector-' + p.porta).textContent = p.conector;
+            document.getElementById('estado-' + p.porta).textContent = ROTULOS[p.estado] || p.estado;
+            document.getElementById('corrente-' + p.porta).textContent =
+                (p.corrente_ma === null || p.corrente_ma === undefined)
+                    ? '' : p.corrente_ma.toFixed(1) + ' mA'
+                      + (typeof p.potencia_kw === 'number' ? ' · ' + p.potencia_kw.toFixed(2) + ' kW' : '');
+        });
+
+        var r = dados.posto_resumo;
+        document.getElementById('resumo-posto').textContent =
+            r.em_uso_kw.toFixed(1) + ' kW de ' + r.limite_kw.toFixed(0) + ' kW ('
+            + r.ocupacao_pct.toFixed(1) + '%) · ' + r.sessoes + ' sessões ativas · semáforo ' + r.semaforo;
+    }
+
+    function buscar() {
+        fetch('/api/esp32/estado', { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+            .then(atualizar)
+            .catch(function () {
+                var c = document.getElementById('conexao');
+                c.textContent = 'Painel sem resposta do servidor';
+                c.className = 'estado-conexao off';
+            });
+    }
+
+    buscar();
+    setInterval(buscar, 2000);
+})();
+</script>
+{% endblock %}

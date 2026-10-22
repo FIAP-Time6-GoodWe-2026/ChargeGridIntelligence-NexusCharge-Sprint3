@@ -17,6 +17,7 @@ from typing import Dict, List
 # ---------------------------------------------------------------------------
 TARIFA_BASE_KWH       = 1.20   # R$/kWh  — tarifa padrão
 DESCONTO_ASSINANTE    = 0.15   # 15 % de desconto para assinantes
+DESCONTO_CORPORATIVO  = 0.10   # 10 % de desconto para corporativos
 MULTIPLICADOR_PICO    = 1.50   # +50 % no horário de pico (18h–22h59)
 TAXA_MINIMA_SESSAO    = 2.00   # R$ — cobrança mínima por sessão
 
@@ -52,11 +53,12 @@ def calcular_tarifa(hora_inicio: int, minuto_inicio: int, tipo_usuario: str) -> 
     Regras aplicadas:
       - Horário de pico (18:00–22:59): tarifa base × 1,5
       - Assinante (tipo='A'): desconto de 15% sobre o valor final
+      - Corporativo (tipo='C'): desconto de 10% sobre o valor final
 
     Args:
         hora_inicio: Hora de início da sessão (0-23)
         minuto_inicio: Minuto de início da sessão (0-59)
-        tipo_usuario: 'P' (Padrão) ou 'A' (Assinante)
+        tipo_usuario: 'P' (Padrão), 'A' (Assinante) ou 'C' (Corporativo)
 
     Returns:
         Tarifa por kWh em R$, arredondada para 4 casas decimais
@@ -68,6 +70,8 @@ def calcular_tarifa(hora_inicio: int, minuto_inicio: int, tipo_usuario: str) -> 
 
     if tipo_usuario == "A":
         tarifa *= (1 - DESCONTO_ASSINANTE)
+    elif tipo_usuario == "C":
+        tarifa *= (1 - DESCONTO_CORPORATIVO)
 
     return round(tarifa, 4)
 

@@ -157,15 +157,19 @@
     margin-top: var(--sp-3);
 }
 .cartao-marca {
-    display: flex; align-items: center;
+    display: flex; align-items: center; justify-content: center;
     width: 38px; flex: 0 0 38px;
 }
 .cartao-marca span {
     display: block; width: 22px; height: 22px; border-radius: 50%;
 }
 .cartao-marca span:first-child { background: #EB001B; }
-.cartao-marca span:last-child  { background: #F79E1B; margin-left: -10px;
-                                 mix-blend-mode: multiply; }
+.cartao-marca span:last-child  { background: rgba(247, 158, 27, 0.88); margin-left: -10px; }
+.cartao-marca.visa {
+    background: #1A1F71; color: #FFFFFF; border-radius: 4px;
+    height: 24px; font-size: 0.6875rem; font-weight: 800;
+    letter-spacing: 0.04em; font-style: italic;
+}
 .cartao-numero {
     display: block;
     font-variant-numeric: tabular-nums;
@@ -208,7 +212,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
+<main class="container">
     <div class="pag-grid">
 
         {# ── Resumo da recarga ──────────────────────────────────────── #}
@@ -298,7 +302,7 @@
                             <input type="radio" name="metodo" value="NEXUSCOIN"
                                    {% if tem_saldo or cobranca.gratuito %}checked{% else %}disabled{% endif %}>
                             <span class="metodo-icone" aria-hidden="true">
-                                <svg viewBox="0 0 100 100"><use href="#moeda-nexus"/></svg>
+                                <svg viewBox="0 0 100 100" style="stroke:none"><use href="#moeda-nexus"/></svg>
                             </span>
                             <span class="metodo-titulo">NexusCoin</span>
                             {% if cobranca.cashback_nc > 0 %}
@@ -383,9 +387,13 @@
 
                         <span class="metodo-corpo so-ativo">
                             <span class="cartao">
+                                {% if 'VISA' in (cartao_bandeira | upper) %}
+                                <span class="cartao-marca visa" aria-hidden="true">VISA</span>
+                                {% else %}
                                 <span class="cartao-marca" aria-hidden="true">
                                     <span></span><span></span>
                                 </span>
+                                {% endif %}
                                 <span>
                                     <span class="cartao-numero">
                                         {{ cartao_bandeira }} •••• {{ cartao_final }}
@@ -420,8 +428,9 @@
                 </div>
             </form>
         </section>
+
     </div>
-</div>
+</main>
 {% endblock %}
 
 {% block scripts %}

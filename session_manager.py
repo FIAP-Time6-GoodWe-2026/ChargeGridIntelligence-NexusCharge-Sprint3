@@ -47,6 +47,26 @@ logger = logging.getLogger(__name__)
 
 MAX_CHARGERS_PER_STATION: int = 5   # máximo de conectores por posto
 POTENCIA_NOMINAL_KW: float   = 11.0  # GW11K-HCA-20
+# Medição mais velha que isso (medidor mudo, Wi-Fi caiu) vale 0 kW: não se
+# cobra energia que não foi medida.
+MEDICAO_VALIDA_S: float      = 10.0
+
+
+def potencia_efetiva_kw(session: ChargingSession,
+                        agora: Optional[datetime.datetime] = None) -> float:
+    """
+    Potência que entra na conta de energia neste instante.
+
+    Sem medidor: a alocada pelo PowerManager. Com medidor: a medida, limitada
+    à alocada (o carregador nunca entrega acima do limite que recebeu) e zero
+    se a última medição passou de `MEDICAO_VALIDA_S`.
+    """
+    if session.measured_power_kw is None or session.measured_at is None:
+        return session.allocated_power_kw
+    agora = agora or datetime.datetime.now()
+    if (agora - session.measured_at).total_seconds() > MEDICAO_VALIDA_S:
+        return 0.0
+    return min(session.measured_power_kw, session.allocated_power_kw)
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +104,13 @@ class SessionManager:
             for c in range(1, MAX_CHARGERS_PER_STATION + 1)
         }
         logger.info("SessionManager inicializado com %d carregadores.", len(self._chargers))
+
+    def reset(self) -> None:
+        """Restaura a lista de sessões e libera todos os conectores em memória."""
+        self._sessions.clear()
+        for cid in self._chargers:
+            self._chargers[cid] = None
+        logger.info("SessionManager reiniciado.")
 
     # ------------------------------------------------------------------
     # Consulta de carregadores
@@ -286,13 +313,28 @@ class SessionManager:
         if delta_horas <= 0:
             return session  # relógio sem avanço (chamadas concorrentes)
 
-        delta_kwh = session.allocated_power_kw * delta_horas
+        # ponytail: a potência vale para o intervalo inteiro desde a última
+        # contabilização; o ESP32 contabiliza a cada ~1,5 s, então o erro é pequeno.
+        delta_kwh = potencia_efetiva_kw(session, agora) * delta_horas
         session.energy_kwh = round(session.energy_kwh + delta_kwh, 4)
         session.total_cost_brl = round(
             session.energy_kwh * session.tariff_kwh, 2
         )
         session.last_energy_update = agora
         return session
+
+    def registrar_medicao(self, session: ChargingSession,
+                          potencia_kw: float) -> None:
+        """
+        Grava a potência medida no conector, limitada a `POTENCIA_NOMINAL_KW`.
+
+        Contabiliza antes a energia do intervalo que passou, na potência
+        anterior: a medição nova só vale daqui para a frente.
+        """
+        self.accrue_energy(session)
+        session.measured_power_kw = round(
+            min(max(potencia_kw, 0.0), POTENCIA_NOMINAL_KW), 3)
+        session.measured_at = datetime.datetime.now()
 
     def update_energy(self, session_id: str, delta_kwh: float) -> ChargingSession:
         """

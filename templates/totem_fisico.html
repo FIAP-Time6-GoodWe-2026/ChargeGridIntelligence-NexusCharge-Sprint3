@@ -1,0 +1,66 @@
+{% extends "totem_base.html" %}
+{% block title %}Totem físico — NexusCharge{% endblock %}
+
+{% block totem_css %}
+.tf-portas { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
+.tf-porta { padding: var(--sp-4); background: var(--cor-card);
+    border: 1px solid var(--cor-borda); border-radius: var(--r-md); text-align: center; }
+.tf-porta strong { display: block; font-size: var(--fs-lg); }
+.tf-porta span { display: block; margin-top: var(--sp-1); color: var(--cor-texto-secundario); }
+.tf-aviso { font-size: var(--fs-lg); color: var(--cor-texto-secundario); }
+{% endblock %}
+
+{% block totem %}
+<section>
+    <h1 style="font-size:2rem;font-weight:700">Plugue o veículo</h1>
+    <p class="tf-aviso" id="tf-aviso" aria-live="polite">{{ posto.nome }} · aguardando…</p>
+</section>
+
+<div class="tf-portas" id="tf-portas">
+    {% for n in (1, 2, 3) %}
+    <div class="tf-porta" id="tf-porta-{{ n }}">
+        <strong>Porta {{ n }}</strong>
+        <span id="tf-estado-{{ n }}">—</span>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block totem_rodape %}
+<footer class="tt-rodape">
+    <span>NexusCharge · ChargeGrid Intelligence</span>
+    <span>
+        <a href="{{ url_for('totem_home') }}">Voltar ao totem</a>
+        &nbsp;·&nbsp;
+        <a href="{{ url_for('totem_configurar') }}">Configurar totem</a>
+    </span>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var ROTULOS = { livre: 'Livre', plugada: 'Plugada', sem_leitura: 'Sem leitura',
+                    offline: 'Sem ESP32', sem_dados: '—' };
+    function atualizar(d) {
+        d.portas.forEach(function (p) {
+            var el = document.getElementById('tf-estado-' + p.porta);
+            if (el) el.textContent = p.em_uso ? 'Em uso' : (ROTULOS[p.estado] || p.estado);
+        });
+        var aviso = document.getElementById('tf-aviso');
+        if (!d.online) { aviso.textContent = 'Aguardando o ESP32…'; return; }
+        if (d.proxima) {
+            aviso.textContent = 'Veículo detectado na porta ' + d.proxima + '…';
+            window.location.href = '/totem/fisico/porta/' + d.proxima;
+            return;
+        }
+        aviso.textContent = 'Plugue o veículo em uma das portas.';
+    }
+    function buscar() {
+        fetch('/totem/fisico/estado', { cache: 'no-store' })
+            .then(function (r) { return r.json(); }).then(atualizar).catch(function () {});
+    }
+    buscar(); setInterval(buscar, 1500);
+})();
+</script>
+{% endblock %}

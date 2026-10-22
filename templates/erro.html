@@ -12,7 +12,7 @@
 .erro-card {
     background: var(--cor-card);
     border: 1px solid var(--cor-borda);
-    border-radius: var(--r-xl, 20px);
+    border-radius: var(--r-lg);
     padding: var(--sp-7) var(--sp-6);
     box-shadow: var(--sombra-md);
     display: flex;
@@ -26,12 +26,11 @@
     gap: 6px;
     font-size: var(--fs-xs);
     font-weight: var(--fw-bold);
-    color: var(--cor-primaria);
-    background: rgba(192, 0, 0, 0.09);
+    color: var(--cor-primaria-texto);
+    background: rgba(192, 0, 0, 0.12);
     padding: 4px 12px;
     border-radius: var(--r-pill);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.03em;
 }
 .erro-icone {
     width: 72px;
@@ -40,8 +39,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(192, 0, 0, 0.1);
-    color: var(--cor-primaria);
+    background: rgba(192, 0, 0, 0.12);
+    color: var(--cor-primaria-texto);
     margin-bottom: var(--sp-2);
 }
 .erro-icone svg {
@@ -58,7 +57,7 @@
 .erro-desc {
     font-size: var(--fs-md);
     color: var(--cor-texto-secundario);
-    line-height: var(--lh-relaxed);
+    line-height: var(--lh-normal);
     margin: 0;
 }
 .erro-acoes {

@@ -49,7 +49,7 @@ select {
     padding: 11px 14px;
     border: 1.5px solid var(--cor-input-border);
     border-radius: 8px;
-    font-size: 0.95rem;
+    font-size: 1rem;
     transition: border-color 0.2s, box-shadow 0.2s, background-color 0.28s;
     font-family: inherit;
     background: var(--cor-input-bg);
@@ -97,7 +97,7 @@ input:not(:focus):hover, select:not(:focus):hover {
 .carro-estado {
     font-size: .74rem; font-weight: 600; white-space: nowrap;
     padding: 4px 10px; border-radius: 999px;
-    color: var(--cor-sucesso-texto, #047857);
+    color: var(--cor-livre-texto, #047857);
     background: var(--cor-sucesso-bg, rgba(16, 185, 129, .12));
 }
 .carro.ocupado { cursor: not-allowed; opacity: .62; }
@@ -233,11 +233,11 @@ input:not(:focus):hover, select:not(:focus):hover {
 }
 
 .cost-preview-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; position: relative; }
-.cost-preview-header svg { width: 20px; height: 20px; stroke: var(--cor-livre-texto); }
-.cost-preview-title { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+.cost-preview-header svg { width: 20px; height: 20px; stroke: #34D399; }
+.cost-preview-title { font-size: 0.9rem; font-weight: 600; opacity: 0.9; }
 
-.cost-preview-amount { font-size: 2.2rem; font-weight: 800; color: var(--cor-livre-texto); margin-bottom: 4px; line-height: 1; position: relative; }
-.cost-preview-amount.peak { color: var(--cor-vip-texto); }
+.cost-preview-amount { font-size: 2.2rem; font-weight: 800; color: #34D399; margin-bottom: 4px; line-height: 1; position: relative; font-variant-numeric: tabular-nums; }
+.cost-preview-amount.peak { color: #FBBF24; }
 .cost-preview-label  { font-size: 0.8rem; opacity: 0.7; margin-bottom: 16px; position: relative; }
 
 .cost-breakdown {
@@ -247,9 +247,9 @@ input:not(:focus):hover, select:not(:focus):hover {
 }
 .cost-breakdown-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
 .cost-breakdown-label { opacity: 0.7; }
-.cost-breakdown-value { font-weight: 600; }
-.cost-breakdown-value.highlight  { color: var(--cor-livre-texto); }
-.cost-breakdown-value.peak-text  { color: var(--cor-vip-texto); }
+.cost-breakdown-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cost-breakdown-value.highlight  { color: #34D399; }
+.cost-breakdown-value.peak-text  { color: #FBBF24; }
 
 /* ====================================================================
    DURAÇÃO — slider + input sincronizados
@@ -319,9 +319,7 @@ input:not(:focus):hover, select:not(:focus):hover {
 
 /* Quick-charge buttons */
 .quick-charge-label {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-size: 0.78rem;
     color: var(--cor-texto-secundario);
     font-weight: 600;
     margin-bottom: 8px;
@@ -619,7 +617,7 @@ input:not(:focus):hover, select:not(:focus):hover {
 {% block header %}
 <header class="header">
     <div class="header-content">
-        <a href="{{ url_for('posto', posto_id=posto.id) }}" class="back-button" title="Voltar">
+        <a href="{{ url_for('posto', posto_id=posto.id) }}" class="back-button" title="Voltar" aria-label="Voltar ao posto">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
@@ -635,7 +633,7 @@ input:not(:focus):hover, select:not(:focus):hover {
 
 
 {% block content %}
-<div class="container">
+<main class="container">
     <!-- Um único <form> envolve os dois containers: os campos de
          simulação são enviados junto com os dados da recarga. -->
     <form method="POST" action="{{ url_for('processar') }}" id="sessionForm">
@@ -774,7 +772,7 @@ input:not(:focus):hover, select:not(:focus):hover {
         </div>
 
             <div class="form-group">
-                <label>Horário de Início (formato 24h)</label>
+                <label for="hora">Horário de Início (formato 24h)</label>
                 <div class="time-grid">
                     <div>
                         <select id="hora" name="hora" required>
@@ -785,7 +783,7 @@ input:not(:focus):hover, select:not(:focus):hover {
                         <span class="input-hint">Hora (00-23)</span>
                     </div>
                     <div>
-                        <select id="minuto" name="minuto" required>
+                        <select id="minuto" name="minuto" aria-label="Minuto de início" required>
                             <option value="0"  selected>00 min</option>
                             <option value="15">15 min</option>
                             <option value="30">30 min</option>
@@ -1000,7 +998,7 @@ input:not(:focus):hover, select:not(:focus):hover {
         </div>
     </div>
 
-</div>{# /container #}
+</main>{# /container #}
 {% endblock %}
 
 
@@ -1011,14 +1009,15 @@ input:not(:focus):hover, select:not(:focus):hover {
 // ====================================================================
 // CONSTANTES (espelham logica_recarga.py — fonte única de verdade é o backend)
 // ====================================================================
-var TARIFA_BASE        = 1.20;
-var MULTIPLICADOR_PICO = 1.50;
-var DESCONTO_ASSINANTE = 0.15;
-var TAXA_MINIMA        = 2.00;
-var POTENCIA_KW        = 11.0;
-var TICK_MIN           = 5;
-var PICO_INICIO        = 18 * 60;
-var PICO_FIM           = 22 * 60 + 59;
+var TARIFA_BASE          = 1.20;
+var MULTIPLICADOR_PICO   = 1.50;
+var DESCONTO_ASSINANTE   = 0.15;
+var DESCONTO_CORPORATIVO = 0.10;
+var TAXA_MINIMA          = 2.00;
+var POTENCIA_KW          = 11.0;
+var TICK_MIN             = 5;
+var PICO_INICIO          = 18 * 60;
+var PICO_FIM             = 22 * 60 + 59;
 
 // ====================================================================
 // ELEMENTOS
@@ -1114,8 +1113,9 @@ function calcularPrevisao(hora, minuto, duracao, tipoUsuario) {
         var emPico  = isPico(tickMin);
         if (emPico) temPico = true;
         var tarifa  = TARIFA_BASE;
-        if (emPico)           tarifa *= MULTIPLICADOR_PICO;
-        if (tipoUsuario === 'A') tarifa *= (1 - DESCONTO_ASSINANTE);
+        if (emPico)                tarifa *= MULTIPLICADOR_PICO;
+        if (tipoUsuario === 'A')   tarifa *= (1 - DESCONTO_ASSINANTE);
+        else if (tipoUsuario === 'C') tarifa *= (1 - DESCONTO_CORPORATIVO);
         var energia = POTENCIA_KW * (TICK_MIN / 60);
         energiaTotal += energia;
         custoTotal   += energia * tarifa;
@@ -1146,7 +1146,15 @@ function atualizarPreview() {
     energiaValue.textContent = r.energia.toFixed(2).replace('.', ',') + ' kWh';
     tarifaValue.textContent  = fmt(r.tarifaMedia) + '/kWh';
     picoRow.style.display    = r.temPico ? 'flex' : 'none';
-    descontoRow.style.display = t === 'A' ? 'flex' : 'none';
+    if (t === 'A' || t === 'C') {
+        descontoRow.style.display = 'flex';
+        var lbl = descontoRow.querySelector('.cost-breakdown-label');
+        var val = descontoRow.querySelector('.cost-breakdown-value');
+        if (lbl) lbl.textContent = t === 'A' ? 'Desconto assinante' : 'Desconto corporativo';
+        if (val) val.textContent = t === 'A' ? '-15%' : '-10%';
+    } else {
+        descontoRow.style.display = 'none';
+    }
     r.temPico ? peakWarning.classList.add('show') : peakWarning.classList.remove('show');
 }
 
@@ -1184,6 +1192,10 @@ function activateStep(el)    { el.classList.remove('done'); el.classList.add('ac
 function completeStep(el)    { el.classList.remove('active'); el.classList.add('done'); }
 
 function runLoadingSequence() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        sessionForm.submit();
+        return;
+    }
     overlay.setAttribute('aria-hidden', 'false');
     overlay.classList.add('visible');
 
@@ -1252,7 +1264,7 @@ sessionForm.addEventListener('submit', function (e) {
     // Skeleton no card de previsão (já existente)
     costPreviewCard.innerHTML =
         '<div style="position:relative;z-index:1;">' +
-        '  <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;opacity:0.6;margin-bottom:14px;">Previsão de Custo</div>' +
+        '  <div style="font-size:0.85rem;font-weight:600;opacity:0.75;margin-bottom:14px;">Previsão de Custo</div>' +
         '  <div class="skeleton-on-dark" style="height:38px;width:62%;margin-bottom:10px;"></div>' +
         '  <div class="skeleton-on-dark" style="height:12px;width:48%;margin-bottom:24px;opacity:0.7;"></div>' +
         '  <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;display:flex;flex-direction:column;gap:10px;">' +

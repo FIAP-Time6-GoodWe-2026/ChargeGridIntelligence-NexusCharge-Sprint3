@@ -42,7 +42,7 @@
 .cp-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .cp-card {
-    background: #FFFFFF;
+    background: var(--cor-card);
     border: 1px solid var(--cor-borda);
     border-radius: var(--r-xl, 16px);
     padding: var(--sp-4) var(--sp-5);
@@ -56,7 +56,7 @@
     display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-3);
 }
 .cp-tile {
-    background: #FFFFFF;
+    background: var(--cor-card);
     border: 1.5px solid var(--cor-borda);
     border-radius: var(--r-md);
     padding: var(--sp-3) var(--sp-4);
@@ -69,8 +69,8 @@
 }
 .cp-tile span {
     display: block; font-size: var(--fs-xs); font-weight: 600;
-    color: var(--cor-texto-secundario); text-transform: uppercase;
-    letter-spacing: 0.03em; margin-bottom: 4px;
+    color: var(--cor-texto-secundario);
+    margin-bottom: 4px;
 }
 .cp-tile strong {
     display: flex; align-items: baseline; gap: 4px;
@@ -89,7 +89,7 @@
 }
 .cp-badge-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .cp-badge-status.throttle {
-    color: #F59E0B; background: rgba(245, 158, 11, 0.14);
+    color: var(--cor-vip-texto); background: rgba(245, 158, 11, 0.14);
 }
 
 .cp-alerta-throttle {
@@ -100,7 +100,17 @@
     border: 1px solid rgba(245, 158, 11, 0.3);
     font-size: var(--fs-xs);
     color: var(--cor-texto);
-    line-height: var(--lh-relaxed);
+    line-height: 1.45;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+.cp-alerta-throttle svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--cor-vip-texto);
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 .cp-cashback-badge {
@@ -112,6 +122,12 @@
     font-size: var(--fs-xs);
     color: var(--cor-texto);
     display: flex; align-items: center; gap: var(--sp-2);
+}
+.cp-cashback-badge svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--cor-livre-texto);
+    flex-shrink: 0;
 }
 
 .cp-pulse-box {
@@ -154,7 +170,7 @@
             {% include 'partials/_modo_toggle.html' %}
             <button class="theme-toggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
                 <svg class="icon-sun" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="5" r="5"/>
+                    <circle cx="12" cy="12" r="5"/>
                     <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
                     <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
                     <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
@@ -213,7 +229,7 @@
                 </div>
                 <div class="cp-tile">
                     <span>Potência instantânea</span>
-                    <strong id="tel-potencia">{{ '%.1f' | format(sessao.allocated_power_kw) | replace('.', ',') if sessao else '0,0' }}<small>kW</small></strong>
+                    <strong id="tel-potencia">{{ '%.1f' | format(potencia_kw(sessao)) | replace('.', ',') if sessao else '0,0' }}<small>kW</small></strong>
                 </div>
                 <div class="cp-tile">
                     <span>Tempo de conexão</span>
@@ -226,11 +242,16 @@
             </div>
 
             <div id="tel-throttle" class="cp-alerta-throttle" style="{% if not (sessao and sessao.status.value == 'THROTTLED') %}display:none;{% endif %}">
-                ⚡ <strong>GW11K-HCA-20 Balanceamento:</strong> Potência flexibilizada temporariamente para otimização da demanda geral do posto. Voltará aos 11 kW normais assim que a demanda estabilizar.
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                <span><strong>GW11K-HCA-20 Balanceamento:</strong> Potência flexibilizada temporariamente para otimização da demanda geral do posto. Voltará aos 11 kW normais assim que a demanda estabilizar.</span>
             </div>
 
             <div class="cp-cashback-badge">
-                <span style="font-size: 1rem; flex-shrink: 0;" aria-hidden="true">💡</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.6 1 1.4 1 2.3h6c0-.9.4-1.7 1-2.3A7 7 0 0 0 12 2z"/>
+                </svg>
                 <span>Pague com <strong>NexusCoin</strong> no encerramento e receba <strong>10% de cashback</strong> direto na sua carteira.</span>
             </div>
         </div>
@@ -248,7 +269,7 @@
     </div>
 
     {# ── Painel de Aguardo (quando confirmado mas recarga ainda não deu start no totem) ── #}
-    <div id="cp-aguardando" style="display: {% if sessao and sessao.is_active %}none{% else %}block{% endif %};" class="cp-pulse-box">
+    <div id="cp-aguardando" style="display: {% if sessao %}none{% else %}block{% endif %};" class="cp-pulse-box">
         <div class="cp-pulse-ring" aria-hidden="true"></div>
         <h2 class="cp-titulo" style="font-size: 1.25rem;">Conta conectada ao totem!</h2>
         <p class="cp-sub" style="margin-top: var(--sp-2); max-width: 320px; margin-left: auto; margin-right: auto;">
@@ -257,10 +278,11 @@
     </div>
 
     {# ── Painel de Concluído ── #}
-    <div id="cp-concluido" style="display: none;" class="cp-resultado">
+    <div id="cp-concluido" style="display: {% if sessao and not sessao.is_active %}block{% else %}none{% endif %};" class="cp-resultado">
         <svg class="cp-ok" viewBox="0 0 88 88" aria-hidden="true"><circle cx="44" cy="44" r="42"/><path d="M26 45 l12 12 l24 -26"/></svg>
         <h1 class="cp-titulo">Recarga Concluída!</h1>
         <p class="cp-sub">A sessão foi finalizada no totem. Confira seu comprovante impresso ou na tela do conector.</p>
+        <p id="cp-pendente" class="cp-sub" style="display:{% if pendente %}block{% else %}none{% endif %};margin-top:16px;">O valor ficou como <strong>pagamento pendente na sua conta</strong>. Pague pela Carteira, no app: o conector só é liberado após o pagamento.</p>
     </div>
 
     {% else %}
@@ -317,7 +339,7 @@
                             }
                         }
                         if (elThrottle) {
-                            elThrottle.style.display = data.em_throttle ? "block" : "none";
+                            elThrottle.style.display = data.em_throttle ? "flex" : "none";
                         }
                     }
                 } else if (data.status === "aguardando") {
@@ -328,6 +350,8 @@
                     if (elAguardando) elAguardando.style.display = "none";
                     if (elTelemetria) elTelemetria.style.display = "none";
                     if (elConcluido) elConcluido.style.display = "block";
+                    var avisoPendente = document.getElementById("cp-pendente");
+                    if (avisoPendente) avisoPendente.style.display = data.pagamento_pendente ? "block" : "none";
                 }
             })
             .catch(function(err) {

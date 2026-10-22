@@ -170,6 +170,20 @@
 
         {# ── Coluna esquerda: saldo + recarga ───────────────────────── #}
         <div>
+            {% if pendencias %}
+            <div class="card" id="pendencias" style="margin-bottom: var(--sp-4);">
+                <div class="card-titulo">Pagamentos pendentes</div>
+                <div class="card-sub">O conector de cada recarga fica ocupado até o pagamento. Acima de R$ {{ limite_pendente | brl }} ou {{ prazo_pendente }} dias, novas recargas ficam bloqueadas.</div>
+                <ul style="list-style:none;padding:0;margin:var(--sp-3) 0 0;">
+                    {% for p in pendencias %}
+                    <li style="display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3);padding:var(--sp-2) 0;border-top:1px solid var(--cor-borda);">
+                        <span>{{ p.charger_id }} · {{ p.vehicle_id }}<br><small>{{ p.end_time.strftime('%d/%m %H:%M') if p.end_time else '' }}</small></span>
+                        <a class="btn-bloco primario" style="width:auto;padding:8px 16px;" href="{{ url_for('pagamento', session_id=p.session_id) }}">Pagar R$ {{ p.total_cost_brl | brl }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
             <div class="card saldo-card">
                 <svg class="saldo-marca" aria-hidden="true"><use href="#marca-nexus"/></svg>
 

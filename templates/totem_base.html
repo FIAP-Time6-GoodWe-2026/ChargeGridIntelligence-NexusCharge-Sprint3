@@ -29,7 +29,7 @@ body.modo-totem {
        com o texto, em vez de ficarem presos aos pixels do app. */
     --sp-1: .25rem; --sp-2: .5rem;  --sp-3: .75rem; --sp-4: 1rem;
     --sp-5: 1.5rem; --sp-6: 2rem;   --sp-7: 3rem;   --sp-8: 4rem;
-    --r-sm: .375rem; --r-md: .625rem; --r-lg: 1rem;
+    --r-sm: .375rem; --r-md: .625rem; --r-lg: 1rem; --r-xl: 1.25rem;
 }
 
 .tt-aparelho {
@@ -40,7 +40,7 @@ body.modo-totem {
     flex-direction: column;
     background: var(--cor-card);
 }
-@media (min-width: 700px) {
+@media (min-width: 700px) and (min-aspect-ratio: 4/5) {
     body.modo-totem { background: var(--cor-dark-card-2); padding-block: 24px; }
     .tt-aparelho {
         min-height: calc(100vh - 48px);
@@ -150,7 +150,7 @@ body.modo-totem {
     border-radius: var(--r-lg);
     padding: var(--sp-4) var(--sp-5);
 }
-.tt-numero span { display: block; font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
+.tt-numero > span { display: block; font-size: var(--fs-sm); color: var(--cor-texto-secundario); }
 .tt-numero strong {
     display: block; margin-top: var(--sp-1);
     font-size: 2.25rem; line-height: 1.1; font-weight: var(--fw-bold);
@@ -251,7 +251,11 @@ body.modo-totem {
     <header class="tt-topo">
         <svg class="tt-marca" aria-hidden="true"><use href="#marca-nexus"/></svg>
         <div class="tt-conector">
+            {% if tela_fisica %}
+            <strong>Totem físico · {{ posto.nome.replace('ChargeGrid ', '') }}</strong>
+            {% else %}
             <strong>{{ conector_totem.split('-')[1] }} · {{ postos_nomes[conector_totem.split('-')[0]] }}</strong>
+            {% endif %}
             <span>Totem NexusCharge · GoodWe 11 kW</span>
         </div>
         {% include 'partials/_modo_toggle.html' %}

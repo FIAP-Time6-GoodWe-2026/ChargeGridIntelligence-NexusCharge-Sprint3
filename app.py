@@ -42,7 +42,7 @@ import csv
 import datetime
 import io
 import logging
-import os
+import math, os
 import re
 import threading
 from typing import Optional
@@ -59,6 +59,7 @@ import avulso
 import billing
 import algoritmos
 import db
+import esp32
 import reservations
 import totem
 import veiculos
@@ -66,7 +67,7 @@ import wallet
 from logica_recarga import processar_sessao   # Sprint 1 — intacto
 from models import UserType, SessionStatus
 from qr import qr_svg
-from session_manager import SessionManager
+from session_manager import SessionManager, potencia_efetiva_kw
 from power_manager import PowerManager
 from pricing_engine import PricingEngine
 from modbus_simulator import ModbusSimulator
@@ -87,7 +88,7 @@ if not _secret:
     )
     _secret = "chargegrid-intelligence-fiap-goodwe-2026-dev-only"
 app.config["SECRET_KEY"] = _secret
-
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
 # Tradução dos tipos de usuário para exibição em português.
 # Aceita o nome do enum (STANDARD), o código (P/A/C) ou o próprio Enum.
@@ -99,6 +100,10 @@ _TIPO_USUARIO_PT = {
     "A": "Assinante",
     "C": "Corporativo",
 }
+
+
+# Potência que entra na conta (a medida pelo ESP32, quando há), para as telas.
+app.add_template_global(potencia_efetiva_kw, "potencia_kw")
 
 
 @app.template_filter("brl")
@@ -352,7 +357,7 @@ def _validar_valor_brl(raw: str) -> float:
             texto = texto.replace(",", "")
     elif "," in texto:
         texto = texto.replace(",", ".")
-    return round(float(texto), 2)
+    val = float(texto); return round(val, 2) if math.isfinite(val) else (_ for _ in ()).throw(ValueError("Valor inválido."))
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +420,9 @@ ROTAS_PUBLICAS: set[str] = {
     # O bilhete da recarga sem conta, aberto no celular pelo QR do totem.
     # As telas do totem entram mais abaixo, junto com o modo totem.
     "avulso_sessao",
+    # O ESP32 não tem login de usuário: a rota se protege com o cabeçalho
+    # X-ESP32-Token (ver esp32.token_valido), não com sessão de navegador.
+    "api_esp32_portas",
 }
 
 # Endpoints restritos ao perfil staff (dono do posto).
@@ -422,6 +430,7 @@ ROTAS_STAFF: set[str] = {
     "admin_home", "dashboard", "dashboard_nova_sessao", "dashboard_encerrar",
     "relatorio_consolidado", "modbus_log", "testes", "api_testes_run",
     "export_csv", "demo_reset", "liberar_conector",
+    "esp32_painel", "api_esp32_estado",
 }
 
 
@@ -631,7 +640,7 @@ def posto(posto_id: str):
             ),
             "session_id":    sid,
             "energia_kwh":   round(session.energy_kwh, 2) if session else None,
-            "potencia_kw":   session.allocated_power_kw if session else None,
+            "potencia_kw":   potencia_efetiva_kw(session) if session else None,
             "custo_brl":     round(session.total_cost_brl, 2) if session else None,
             # True quando este conector específico está com throttle ativo
             "em_throttle":   (
@@ -760,6 +769,9 @@ def processar():
         minuto        = int(request.form.get("minuto", 0))
         duracao_min   = int(request.form.get("duracao", 30))
 
+        bloqueio = _bloqueio_por_pendencia(owner)
+        if bloqueio:
+            raise ValueError(bloqueio)
         if not (0 <= hora <= 23 and 0 <= minuto <= 59):
             raise ValueError("Horário inválido.")
         if not (5 <= duracao_min <= 240):
@@ -783,16 +795,15 @@ def processar():
         vehicle_id, salvar_novo = _veiculo_do_formulario(owner)
 
         # Conector reservado por outra pessoa não pode ser iniciado.
-        reserva_conector = reservations.ativa_do_conector(cid_full)
-        if reserva_conector and reserva_conector.usuario != owner:
-            flash(
-                f"O conector {carregador_id} está reservado por outro usuário.",
-                "error",
-            )
-            return redirect(url_for("posto", posto_id=posto_id))
-
-        # Cria sessão no SessionManager (protegido por lock)
+        # Verifica reserva e cria sessão no SessionManager sob o mesmo lock.
         with _state_lock:
+            reserva_conector = reservations.ativa_do_conector(cid_full)
+            if reserva_conector and reserva_conector.usuario != owner:
+                flash(
+                    f"O conector {carregador_id} está reservado por outro usuário.",
+                    "error",
+                )
+                return redirect(url_for("posto", posto_id=posto_id))
             session = sm.create_session(
                 charger_id=cid_full,
                 vehicle_id=vehicle_id,
@@ -1222,6 +1233,112 @@ def api_status():
     })
 
 
+# ---------------------------------------------------------------------------
+# Totem físico (ESP32) — Homologação, Fase 1: comunicação e leitura
+# ---------------------------------------------------------------------------
+
+# Estado das portas físicas. Só é lido e exibido nesta fase; abrir sessões a
+# partir dele é a Fase 2.
+portas_fisicas = esp32.EstadoPortas()
+detector_desplugue = esp32.DetectorDesplugue()
+
+
+def _resumo_posto_fisico() -> dict:
+    """Ocupação do posto simulado pelo totem, devolvida ao ESP32 em cada POST."""
+    pid = esp32.POSTO_FISICO
+    em_uso = round(_posto_sms[pid].total_allocated_power_kw(), 2)
+    limite = posto_pms[pid].limit_kw
+    resumo = {
+        "posto":        pid,
+        "em_uso_kw":    em_uso,
+        "limite_kw":    limite,
+        "ocupacao_pct": round((em_uso / limite) * 100, 1) if limite > 0 else 0.0,
+        "sessoes":      _posto_sms[pid].active_count(),
+    }
+    resumo["semaforo"] = esp32.semaforo_do_posto(resumo["ocupacao_pct"])
+    return resumo
+
+
+def _encerrar_por_desplugue(cid: str) -> None:
+    """
+    Encerra a recarga do conector porque o cabo foi retirado da porta física.
+
+    Com conta: a energia para e o valor fica como pagamento pendente; o
+    conector só é liberado quando o pagamento for confirmado. Sem conta (pré-pago): encerra e acerta na hora,
+    devolvendo o que sobrou do valor pago (o método fica como Pix, pois a
+    escolha do motorista mora no cookie do totem e não chega até aqui).
+    """
+    sid = sm.list_chargers().get(cid)
+    sessao = sm.get_session(sid) if sid else None
+    if sessao is None or not sessao.is_active:
+        return
+    with _state_lock:
+        sm.accrue_energy(sessao)
+    if avulso.eh_avulso(sessao.owner):
+        # Pré-pago: cabo retirado encerra e devolve o que sobrou do valor pago.
+        _acertar_avulso(sessao, billing.METODO_PIX, limitar_ao_pago=True)
+        logger.info("Cabo retirado: recarga avulsa %s encerrada", sid)
+        return
+    _encerrar_retendo(sessao)
+    logger.info("Cabo retirado: recarga %s encerrada, pagamento pendente", sid)
+
+
+
+@app.route("/api/esp32/portas", methods=["POST"])
+def api_esp32_portas():
+    """
+    Recebe do ESP32 a leitura das portas físicas (corrente por porta).
+
+    Autenticada pelo cabeçalho `X-ESP32-Token`, não por login: o ESP32 não é
+    um usuário. Responde com o mapeamento de conectores e a ocupação atual do
+    posto, que o firmware usará nas próximas fases para acionar o semáforo.
+    """
+    if not esp32.token_valido(request.headers.get("X-ESP32-Token")):
+        return jsonify({"ok": False, "erro": "token inválido"}), 401
+
+    corpo = request.get_json(silent=True)
+    try:
+        portas, fw = esp32.validar_mensagem(corpo)
+    except esp32.MensagemInvalida as erro:
+        return jsonify({"ok": False, "erro": str(erro)}), 400
+
+    portas_fisicas.atualizar(portas, fw)
+    ativas = {cid: sid for cid, sid in sm.list_chargers().items()
+              if sid and (sess := sm.get_session(sid)) and sess.is_active}
+    for p in portas:
+        sessao = sm.get_session(ativas.get(p["conector"], ""))
+        # Mede só a recarga em que o cabo já foi visto (a mesma regra do
+        # desplugue): sessão aberta pelo app, sem cabo, segue a potência alocada.
+        if (sessao is None or p["potencia_kw"] is None
+                or not (p["presente"] or sessao.measured_power_kw is not None)):
+            continue
+        with _state_lock:
+            sm.registrar_medicao(sessao, p["potencia_kw"])
+    for cid in detector_desplugue.processar(portas, ativas):
+        _encerrar_por_desplugue(cid)
+    for sid in list(ativas.values()):
+        _aplicar_limite_avulso(sm.get_session(sid))
+    return jsonify({
+        "ok":      True,
+        "portas":  [{"porta": p["porta"], "conector": p["conector"],
+                     "presente": p["presente"]} for p in portas],
+        "posto":   _resumo_posto_fisico(),
+    })
+
+
+@app.route("/api/esp32/estado")
+def api_esp32_estado():
+    """Estado atual das portas físicas, para o painel do operador."""
+    return jsonify({**portas_fisicas.instantaneo(),
+                    "posto_resumo": _resumo_posto_fisico()})
+
+
+@app.route("/esp32")
+def esp32_painel():
+    """Painel do operador com o estado ao vivo das 3 portas do totem físico."""
+    return render_template("esp32.html", posto=POSTOS[esp32.POSTO_FISICO])
+
+
 @app.route("/relatorio")
 def relatorio_consolidado():
     """Relatório completo de todas as sessões (ativas e encerradas)."""
@@ -1293,9 +1410,11 @@ def relatorio_consolidado():
     }
     if consulta["ordenar"] not in algoritmos.COLUNAS:
         consulta["ordenar"] = "id"
-    achadas, _ = algoritmos.buscar(base, consulta["busca"])
-    exibidas, _ = algoritmos.ordenar_por(
+    achadas, cmp_busca = algoritmos.buscar(base, consulta["busca"])
+    exibidas, cmp_ord = algoritmos.ordenar_por(
         achadas, consulta["ordenar"], consulta["dir"] == "desc")
+    consulta["cmp_busca"] = cmp_busca
+    consulta["cmp_ord"] = cmp_ord
 
     return render_template(
         "relatorio_consolidado.html",
@@ -1321,6 +1440,8 @@ def modbus_log():
 
 
 _suites_cache: list[dict] | None = None
+_test_run_lock = threading.Lock()
+_MODULO_TESTE_RE = re.compile(r"^[A-Za-z0-9_]+(\s+or\s+[A-Za-z0-9_]+)*$")
 
 
 def _suites_de_teste() -> list[dict]:
@@ -1339,7 +1460,6 @@ def _suites_de_teste() -> list[dict]:
         return _suites_cache
 
     import pathlib
-    import re
     import subprocess
     import sys
 
@@ -1388,7 +1508,14 @@ def api_testes_run():
     import subprocess
     import sys
 
-    modulo = request.json.get("modulo", "") if request.is_json else ""
+    modulo = (request.json.get("modulo", "") if request.is_json else "").strip()
+    if modulo and not _MODULO_TESTE_RE.fullmatch(modulo):
+        return jsonify({
+            "output": "Filtro de suíte inválido.",
+            "passed": 0, "failed": 0, "errors": 1,
+            "returncode": 2, "ok": False,
+        }), 400
+
     cmd = [
         sys.executable, "-m", "pytest",
         "-v", "--tb=short", "--no-header",
@@ -1406,13 +1533,14 @@ def api_testes_run():
         cmd.append(f"test_chargegrid.py::{modulo}")
 
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-        )
+        with _test_run_lock:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+            )
         output   = proc.stdout + proc.stderr
         passed   = output.count(" PASSED")
         failed   = output.count(" FAILED")
@@ -1458,6 +1586,9 @@ def carteira():
         cartao_final=perfil["cartao_final"],
         cartao_bandeira=perfil["cartao_bandeira"],
         volta_para=request.args.get("next", ""),
+        pendencias=_pendencias_do_usuario(usuario),
+        limite_pendente=LIMITE_PENDENTE_BRL,
+        prazo_pendente=PRAZO_PENDENTE_DIAS,
     )
 
 
@@ -1514,29 +1645,30 @@ def api_reservar():
         400 → conector ocupado/reservado ou usuário já com reserva
         402 → saldo insuficiente (a interface redireciona para a carteira)
     """
-    dados      = request.get_json(silent=True) or {}
+    dados      = request.get_json(silent=True); dados = dados if isinstance(dados, dict) else {}
     posto_id   = str(dados.get("posto_id", "")).strip()
     conector   = str(dados.get("carregador_id", "")).strip()
     charger_id = f"{posto_id}-{conector}"
     usuario    = user_session["usuario"]
 
     try:
-        if posto_id not in POSTOS or charger_id not in sm.list_chargers():
-            raise ValueError("Conector inválido.")
-        if not sm.is_charger_available(charger_id):
-            raise ValueError("Este conector já está em uso.")
-        # O C5 só aceita assinante. Sem esta checagem a reserva era criada e o
-        # sinal debitado, mas /sessao recusava o início depois — o dinheiro
-        # ficava preso numa reserva impossível de usar, e virava taxa por
-        # não comparecimento quando os 15 minutos venciam.
-        if (_eh_conector_vip(charger_id)
-                and auth.conta(usuario)["tipo"] != UserType.SUBSCRIBER):
-            raise ValueError(
-                "O conector C5 é exclusivo para assinantes. "
-                "Reserve um conector de C1 a C4."
-            )
+        with _state_lock:
+            if posto_id not in POSTOS or charger_id not in sm.list_chargers():
+                raise ValueError("Conector inválido.")
+            if not sm.is_charger_available(charger_id):
+                raise ValueError("Este conector já está em uso.")
+            # O C5 só aceita assinante. Sem esta checagem a reserva era criada e o
+            # sinal debitado, mas /sessao recusava o início depois — o dinheiro
+            # ficava preso numa reserva impossível de usar, e virava taxa por
+            # não comparecimento quando os 15 minutos venciam.
+            if (_eh_conector_vip(charger_id)
+                    and auth.conta(usuario)["tipo"] != UserType.SUBSCRIBER):
+                raise ValueError(
+                    "O conector C5 é exclusivo para assinantes. "
+                    "Reserve um conector de C1 a C4."
+                )
 
-        reserva = reservations.criar(usuario, charger_id)
+            reserva = reservations.criar(usuario, charger_id)
         return jsonify({
             "ok": True,
             "segundos": reserva.segundos_restantes,
@@ -1558,7 +1690,7 @@ def api_reservar():
 @app.route("/api/reserva/cancelar", methods=["POST"])
 def api_reserva_cancelar():
     """Cancela a reserva dentro do prazo e estorna o sinal integralmente."""
-    dados      = request.get_json(silent=True) or {}
+    dados      = request.get_json(silent=True); dados = dados if isinstance(dados, dict) else {}
     charger_id = f"{dados.get('posto_id', '')}-{dados.get('carregador_id', '')}"
     usuario    = user_session["usuario"]
 
@@ -1577,6 +1709,57 @@ def api_reserva_cancelar():
 # ---------------------------------------------------------------------------
 # ── SPRINT 3 · ENCERRAMENTO E PAGAMENTO ───────────────────────────────────
 # ---------------------------------------------------------------------------
+
+# ── Pagamentos pendentes ───────────────────────────────────────────────────
+# Recarga de conta encerrada e ainda não paga = débito pendente do motorista.
+# O conector fica ocupado até o pagamento; acima do limite, a conta não inicia outra recarga.
+LIMITE_PENDENTE_BRL = 100.0     # acima disso, não inicia nova recarga
+PRAZO_PENDENTE_DIAS = 7         # mais antigo que isso, não inicia nova recarga
+
+
+def _pendencias_do_usuario(usuario: str) -> list:
+    """Sessões encerradas e não pagas deste usuário, da mais antiga à mais nova."""
+    if not usuario:
+        return []
+    candidatas = [s for s in sm.list_all()
+                  if s.owner == usuario and not s.is_active]
+    pagas = _sessoes_arquivadas(s.session_id for s in candidatas)
+    return [s for s in candidatas if s.session_id not in pagas]
+
+
+def _bloqueio_por_pendencia(usuario: str) -> Optional[str]:
+    """Mensagem de bloqueio se o usuário estourou o limite de pendências, senão None."""
+    if usuario not in auth.CONTAS:
+        return None                       # recarga avulsa: a caução é a garantia
+    pend = _pendencias_do_usuario(usuario)
+    if not pend:
+        return None
+    total = sum(s.total_cost_brl for s in pend)
+    agora = datetime.datetime.now()
+    mais_antiga = min((s.end_time or agora) for s in pend)
+    if total > LIMITE_PENDENTE_BRL or (agora - mais_antiga).days >= PRAZO_PENDENTE_DIAS:
+        return (f"Você tem R$ {total:,.2f} em pagamentos pendentes (limite de "
+                f"R$ {LIMITE_PENDENTE_BRL:,.0f} ou {PRAZO_PENDENTE_DIAS} dias). "
+                f"Quite na Carteira para iniciar uma nova recarga.")
+    return None
+
+
+def _encerrar_retendo(sessao) -> None:
+    """
+    Encerra a recarga de uma conta: a energia para e a potência é redividida,
+    mas o conector CONTINUA ocupado até o pagamento ser confirmado (#B41).
+    Recarga sem conta não passa por aqui.
+    """
+    posto_id = sessao.charger_id.split("-")[0]
+    with _state_lock:
+        if not sessao.is_active:
+            return      # outra thread (ESP32, tela, celular) encerrou antes
+        sm.finish_session(sessao.session_id, liberar=False)
+        mb.on_session_end(sessao)
+        rb = _get_pm(posto_id).rebalance()
+        if rb:
+            mb.on_rebalance(rb)
+
 
 def _sessao_arquivada(session_id: str):
     """Linha da tabela `sessoes` para esta sessão, ou None se ainda não paga."""
@@ -1923,26 +2106,46 @@ def recibo(session_id: str):
 
 
 def _ip_local() -> str:
-    """IP local para o QR Code — prioriza LAN física sobre túnel de VPN."""
+    """IP local para o QR Code e para o ESP32 — o da rede Wi-Fi/LAN de verdade.
+
+    Ordem: 1) variável CHARGEGRID_HOST_IP (forçar na mão, se precisar);
+    2) IP da interface usada na rota padrão; 3) IPs do nome da máquina.
+    Só aceita endereço privado de LAN (192.168.x, 10.x, 172.16–31.x) e descarta
+    os que não servem a outro aparelho: loopback, link-local (169.254) e o
+    192.0.0.x que o iPhone/CLAT cria em hotspot IPv6.
+    """
+    import ipaddress
     import socket
+
+    def utilizavel(ip: str) -> bool:
+        try:
+            a = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        if a.version != 4 or a.is_loopback or a.is_link_local or a.is_unspecified:
+            return False
+        if a in ipaddress.ip_network("192.0.0.0/24") or a in ipaddress.ip_network("192.0.2.0/24"):
+            return False
+        return a.is_private
+
+    forcado = os.environ.get("CHARGEGRID_HOST_IP", "").strip()
+    if forcado:
+        return forcado
     candidatos = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        candidatos.append(s.getsockname()[0])
+        s.close()
+    except OSError:
+        pass
     try:
         _, _, ips = socket.gethostbyname_ex(socket.gethostname())
         candidatos.extend(ips)
     except Exception:
         pass
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        candidatos.insert(0, s.getsockname()[0])
-        s.close()
-    except OSError:
-        pass
     for ip in candidatos:
-        if ip.startswith("192.168.") or ip.startswith("10."):
-            return ip
-    for ip in candidatos:
-        if not ip.startswith("127."):
+        if utilizavel(ip):
             return ip
     return "127.0.0.1"
 
@@ -1971,6 +2174,7 @@ ROTAS_TOTEM: set[str] = {
     "totem_veiculo", "totem_sem_conta", "totem_sinal", "totem_carregando",
     "totem_carregando_status", "totem_encerrar", "totem_recibo", "totem_sair",
     "totem_pagamento_status",
+    "totem_fisico", "totem_fisico_estado", "totem_fisico_porta",
 }
 # O fluxo com conta no totem reaproveita estas rotas do app: a regra de
 # encerrar e de pagar é a mesma, só a tela muda.
@@ -1981,10 +2185,14 @@ ROTAS_TOTEM_EMPRESTADAS: set[str] = {
 ROTAS_DOS_DOIS_MODOS: set[str] = {
     "static", "trocar_modo", "celular_parear", "celular_parear_status",
     "celular_parear_encerrar", "avulso_sessao", "avulso_status", "avulso_encerrar", "avulso_pagar_excedente",
+    "api_energia",
+    # O ESP32 chama a API sem cookie de modo; não pode ser desviado ao totem.
+    "api_esp32_portas",
 }
 ROTAS_PUBLICAS |= ROTAS_TOTEM | {
     "trocar_modo", "celular_parear", "celular_parear_status",
-    "celular_parear_encerrar", "avulso_status", "avulso_encerrar", "avulso_pagar_excedente",
+    "celular_parear_encerrar", "avulso_status", "avulso_encerrar",
+    "avulso_pagar_excedente", "api_energia",
 }
 
 
@@ -2089,6 +2297,9 @@ def _iniciar_recarga(cid: str, placa: str, nome: str, tipo: UserType, dono: str)
                      outro lugar, ou alocação recusada pelo limite físico
     """
     posto_id = cid.split("-")[0]
+    bloqueio = _bloqueio_por_pendencia(dono)
+    if bloqueio:
+        raise ValueError(bloqueio)
     with _state_lock:
         reserva = reservations.ativa_do_conector(cid)
         if reserva and reserva.usuario != dono:
@@ -2183,6 +2394,55 @@ def totem_home():
     )
 
 
+# ── Totem físico: as 3 portas do ESP32 escolhem o conector da tela ─────
+
+def _portas_do_totem_fisico() -> dict:
+    """
+    Estado das portas físicas visto pela tela do totem.
+
+    `livre_para_iniciar` é a porta com algo plugado e sem recarga no conector
+    (nem ativa, nem encerrada e ainda não paga): é ela que pede identificação.
+    """
+    estado = portas_fisicas.instantaneo()
+    ocupados = sm.list_chargers()
+    portas = []
+    for p in estado["portas"]:
+        em_uso = ocupados.get(p["conector"]) is not None
+        portas.append({
+            "porta": p["porta"], "conector": p["conector"],
+            "estado": p["estado"], "em_uso": em_uso,
+            "livre_para_iniciar": p["estado"] == "plugada" and not em_uso,
+        })
+    proxima = next((p["porta"] for p in portas if p["livre_para_iniciar"]), None)
+    return {"online": estado["online"], "portas": portas, "proxima": proxima}
+
+
+@app.route("/totem/fisico")
+def totem_fisico():
+    """Tela de espera do totem físico: segue a porta onde alguém plugou."""
+    return render_template("totem_fisico.html", posto=POSTOS[esp32.POSTO_FISICO],
+                           tela_fisica=True)
+
+
+@app.route("/totem/fisico/estado")
+def totem_fisico_estado():
+    """Estado das 3 portas, consultado pela tela de espera."""
+    return jsonify(_portas_do_totem_fisico())
+
+
+@app.route("/totem/fisico/porta/<int:porta>")
+def totem_fisico_porta(porta: int):
+    """Aponta o totem para o conector da porta e abre o início do fluxo."""
+    cid = esp32.CONECTORES_POR_PORTA.get(porta)
+    if cid is None:
+        return redirect(url_for("totem_fisico"))
+    user_session.clear()
+    resposta = redirect(url_for("totem_home"))
+    resposta.set_cookie(COOKIE_TOTEM, cid, max_age=60 * 60 * 24 * 365,
+                        samesite="Lax")
+    return resposta
+
+
 @app.route("/totem/configurar", methods=["GET", "POST"])
 def totem_configurar():
     """
@@ -2269,7 +2529,14 @@ def celular_parear(token: str):
     Após confirmar no celular, a tela acompanha a recarga em tempo real assim
     que ela for iniciada no totem.
     """
+    # Sem senha: vale a conta já logada no app deste celular; sem login,
+    # a conta padrão do celular da demonstração. A conta do operador não
+    # entra no totem (terminal público).
     chave = auth.CONTA_DO_CELULAR
+    logado = user_session.get("usuario")
+    if logado and auth.conta(logado) and not auth.conta(logado)["staff"]:
+        chave = logado
+    erro_login = ""
     info = totem.info_pareamento(token)
     if info is None:
         return render_template("celular_parear.html", estado="expirado", token=token)
@@ -2277,7 +2544,7 @@ def celular_parear(token: str):
     cid = info["charger_id"]
     posto = POSTOS.get(cid.split("-")[0], {})
 
-    if request.method == "POST":
+    if request.method == "POST" and not erro_login:
         if not totem.confirmar(token, chave):
             return render_template("celular_parear.html", estado="expirado", token=token)
         return redirect(url_for("celular_parear", token=token))
@@ -2300,10 +2567,14 @@ def celular_parear(token: str):
         estado=estado,
         token=token,
         conta=auth.conta(chave),
+        erro_login=erro_login,
         charger_id=cid,
         posto=posto,
         sessao=sessao,
         cobranca=cobranca,
+        # Já encerrada ao recarregar a página: abre direto em "Concluída".
+        pendente=bool(sessao and not sessao.is_active
+                      and not _sessao_arquivada(sessao.session_id)),
     )
 
 
@@ -2333,6 +2604,10 @@ def celular_parear_status(token: str):
             "charger_id": cid,
             "posto_nome": posto.get("nome", "Posto Nexus"),
             "veiculo": sessao.vehicle_id,
+            # Encerrada e ainda não paga: o valor ficou como pagamento pendente
+            # na conta (o conector segue ocupado até pagar). O pagamento é feito na
+            # Carteira, com login: o link do QR não autentica ninguém.
+            "pagamento_pendente": not _sessao_arquivada(sessao.session_id),
         })
 
     with _state_lock:
@@ -2344,7 +2619,7 @@ def celular_parear_status(token: str):
         "charger_id": cid,
         "posto_nome": posto.get("nome", "Posto Nexus"),
         "veiculo": sessao.vehicle_id,
-        "potencia_kw": round(sessao.allocated_power_kw, 1),
+        "potencia_kw": round(potencia_efetiva_kw(sessao), 1),
         "energia_kwh": round(sessao.energy_kwh, 2),
         "duracao_min": round(cobranca.duracao_min),
         "subtotal_brl": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
@@ -2370,14 +2645,11 @@ def celular_parear_encerrar(token: str):
         flash("Nenhuma recarga ativa encontrada para este conector.", "warning")
         return redirect(url_for("celular_parear", token=token))
 
-    with _state_lock:
-        sm.finish_session(sessao.session_id, liberar=False)
-        mb.on_session_end(sessao)
+    _encerrar_retendo(sessao)
 
     _entrar_como(usuario)
     flash("Recarga finalizada! Escolha a forma de pagamento para liberar o conector.", "info")
     return redirect(url_for("pagamento", session_id=sessao.session_id))
-
 
 
 @app.route("/totem/veiculo", methods=["GET", "POST"])
@@ -2511,6 +2783,7 @@ def totem_carregando():
 def totem_carregando_status():
     """Retorna dados de telemetria da sessão atual do totem em JSON sem recarregar a tela."""
     sessao = _sessao_do_totem()
+    _aplicar_limite_avulso(sessao, user_session.get("avulso_metodo", billing.METODO_PIX))
     if sessao is None:
         return jsonify({"ativo": False, "redirect": url_for("totem_home")})
     if not sessao.is_active:
@@ -2538,7 +2811,7 @@ def totem_carregando_status():
     return jsonify({
         "ativo": True,
         "energia": f"{sessao.energy_kwh:.2f}".replace(".", ","),
-        "potencia": f"{sessao.allocated_power_kw:.1f}".replace(".", ","),
+        "potencia": f"{potencia_efetiva_kw(sessao):.1f}".replace(".", ","),
         "tempo": f"{sessao.duration_minutes:.0f}",
         "subtotal": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
         "em_throttle": sessao.status.value == "THROTTLED",
@@ -2572,6 +2845,9 @@ def totem_encerrar():
             with _state_lock:
                 sm.finish_session(sessao.session_id, liberar=False)
                 mb.on_session_end(sessao)
+                rb = _get_pm(sessao.station_id).rebalance()
+                if rb:
+                    mb.on_rebalance(rb)
             flash("Recarga encerrada! Efetue o pagamento do valor excedente para liberar o conector.", "info")
             return redirect(url_for("pagamento", session_id=sessao.session_id))
     return encerrar_recarga(sessao.session_id)
@@ -2640,7 +2916,27 @@ def _usuario_do_arquivo(dono: str) -> str:
     return f"avulso:{sessao.vehicle_id}" if sessao else ""
 
 
-def _acertar_avulso(sessao, metodo: str) -> None:
+def _aplicar_limite_avulso(sessao, metodo: str = billing.METODO_PIX) -> bool:
+    """
+    Recarga sem conta é pré-paga: ao consumir o valor da caução, ela termina.
+
+    Chamada a cada consulta de telemetria e a cada mensagem do ESP32, para o
+    corte não depender de alguém olhando a tela. O consumo é limitado ao valor
+    pago (nunca há cobrança extra). Devolve True se encerrou a recarga.
+    """
+    if sessao is None or not sessao.is_active or not avulso.eh_avulso(sessao.owner):
+        return False
+    with _state_lock:
+        sm.accrue_energy(sessao)
+        if sessao.total_cost_brl < avulso.CAUCAO_BRL:
+            return False
+        sessao.total_cost_brl = avulso.CAUCAO_BRL
+    _acertar_avulso(sessao, metodo, limitar_ao_pago=True)
+    logger.info("Recarga avulsa %s encerrada ao atingir o valor pago", sessao.session_id)
+    return True
+
+
+def _acertar_avulso(sessao, metodo: str, limitar_ao_pago: bool = False) -> None:
     """
     Encerra a recarga avulsa e acerta a caução na mesma operação.
 
@@ -2649,9 +2945,17 @@ def _acertar_avulso(sessao, metodo: str) -> None:
     fila na hora, sem o risco de alguém encerrar e sumir sem pagar.
     """
     with _state_lock:
-        sm.finish_session(sessao.session_id, liberar=False)
-        mb.on_session_end(sessao)
+        # O ESP32 e a tela podem acertar a mesma recarga ao mesmo tempo:
+        # encerra e registra o evento uma vez só (o arquivamento é idempotente).
+        if sessao.is_active:
+            sm.finish_session(sessao.session_id, liberar=False)
+            mb.on_session_end(sessao)
+        if limitar_ao_pago and sessao.total_cost_brl > avulso.CAUCAO_BRL:
+            # Pré-pago: o consumo no instante do corte pode passar um pouco do
+            # valor pago; nunca se cobra acima dele.
+            sessao.total_cost_brl = avulso.CAUCAO_BRL
 
+    # O sinal abate o consumo; o que sobrar da caução é devolvido.
     cobranca = billing.calcular(sessao, avulso.CAUCAO_BRL)
     _arquivar_sessao(sessao, f"avulso:{sessao.vehicle_id}", metodo,
                      cobranca.sinal_brl, 0.0)
@@ -2708,6 +3012,7 @@ def avulso_status(token: str):
     sessao = _sessao_avulsa(token)
     if sessao is None:
         return jsonify({"status": "nao_encontrado"})
+    _aplicar_limite_avulso(sessao)
     if sessao.is_active:
         with _state_lock:
             sm.accrue_energy(sessao)
@@ -2717,7 +3022,7 @@ def avulso_status(token: str):
         "ativo": sessao.is_active,
         "concluido": not sessao.is_active,
         "energia_kwh": f"{cobranca.energia_kwh:.2f}".replace(".", ","),
-        "potencia_kw": f"{sessao.allocated_power_kw:.1f}".replace(".", ","),
+        "potencia_kw": f"{potencia_efetiva_kw(sessao):.1f}".replace(".", ","),
         "duracao_min": f"{cobranca.duracao_min:.0f}",
         "subtotal_brl": f"{cobranca.subtotal_brl:.2f}".replace(".", ","),
         "tarifa_kwh": f"{cobranca.tarifa_kwh:.4f}".replace(".", ","),
@@ -2759,6 +3064,9 @@ def avulso_encerrar(token: str):
         with _state_lock:
             sm.finish_session(sessao.session_id, liberar=False)
             mb.on_session_end(sessao)
+            rb = _get_pm(sessao.station_id).rebalance()
+            if rb:
+                mb.on_rebalance(rb)
         flash("Recarga encerrada! Pague o excedente para liberar o conector.", "warning")
         return redirect(url_for("avulso_sessao", token=token))
 
@@ -2775,6 +3083,9 @@ def avulso_pagar_excedente(token: str):
         return redirect(url_for("avulso_sessao", token=token))
 
     metodo = billing.normalizar_metodo(request.form.get("metodo", billing.METODO_PIX))
+    if metodo == billing.METODO_NEXUSCOIN:
+        flash("NexusCoin exige conta. Use cartão ou Pix.", "error")
+        return redirect(url_for("avulso_sessao", token=token))
     _acertar_avulso(sessao, metodo)
     flash("Pagamento do excedente confirmado! O conector foi liberado.", "success")
     return redirect(url_for("avulso_sessao", token=token))
@@ -2838,18 +3149,109 @@ def export_csv():
 @app.route("/admin/demo-reset", methods=["POST"])
 def demo_reset():
     """
-    Restaura o estado de demonstração: zera carteiras, reservas e histórico.
+    Restaura o estado de demonstração: zera carteiras, reservas, histórico
+    e reinicia o estado em memória (sessões, potência, Modbus e pareamentos).
 
     Existe para salvar uma segunda rodada de apresentação sem reiniciar o
     processo. Só a equipe do posto tem acesso.
     """
-    db.reset()
-    for chave, perfil in auth.CONTAS.items():
-        wallet.garantir_conta(chave, perfil["saldo_inicial"])
-    veiculos.garantir_iniciais()
+    with _state_lock:
+        sm.reset()
+        for pm_inst in posto_pms.values():
+            pm_inst.reset(limit_kw=LIMITE_POR_POSTO_KW)
+        mb.reset()
+        mb.on_breaker_config(breaker_current_a=50)
+        totem.reset()
+        db.reset()
+        for chave, perfil in auth.CONTAS.items():
+            wallet.garantir_conta(chave, perfil["saldo_inicial"])
+        veiculos.garantir_iniciais()
+    _seed_demo()
+    _atualizar_carregadores_livres()
     flash("Estado de demonstração restaurado: saldos, reservas e histórico.",
           "success")
     return redirect(url_for("admin_home"))
+
+
+TOKEN_PICO = os.environ.get("CHARGEGRID_PICO_TOKEN", "chargegrid-pico")
+_TOKENS_PICO_VALIDOS = {TOKEN_PICO, "chargegrid-pico", "goodwe-pico-2026"}
+ESCALA_PICO = 15
+
+
+@app.route("/api/energia", methods=["POST"])
+def api_energia():
+    """
+    Recebe o orçamento dinâmico de potência do controlador solar (Raspberry Pi Pico W).
+
+    Aceita tanto o contrato residencial em watts (`geracao_w` e `consumo_w`,
+    convertidos pelo fator `ESCALA_PICO = 15`) quanto `orcamento_kw` direto.
+    Autenticado via cabeçalho `X-Token` e aplica redistribuição bidirecional
+    (`aplicar_orcamento`) no posto informado.
+    """
+    token_req = request.headers.get("X-Token", "")
+    if not token_req or token_req not in _TOKENS_PICO_VALIDOS:
+        return jsonify({"erro": "token inválido"}), 401
+
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict):
+        dados = {}
+    posto_id = str(dados.get("posto_id", "P1")).strip().upper()
+    if posto_id not in posto_pms:
+        return jsonify({"erro": "posto inválido"}), 400
+
+    disponivel_w: Optional[float] = None
+    if "geracao_w" in dados and "consumo_w" in dados:
+        try:
+            geracao_w = float(dados["geracao_w"])
+            consumo_w = float(dados["consumo_w"])
+            if not (math.isfinite(geracao_w) and math.isfinite(consumo_w)):
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"erro": "geracao_w e consumo_w devem ser numéricos"}), 400
+        disponivel_w = geracao_w - consumo_w
+        orcamento = disponivel_w * ESCALA_PICO / 1000.0
+    elif "orcamento_kw" in dados:
+        try:
+            orcamento = float(dados["orcamento_kw"])
+            if not math.isfinite(orcamento):
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"erro": "orcamento_kw inválido"}), 400
+        disponivel_w = round(orcamento * 1000.0 / ESCALA_PICO, 2)
+    else:
+        return jsonify({"erro": "informe geracao_w/consumo_w ou orcamento_kw"}), 400
+
+    if orcamento >= LIMITE_POR_POSTO_KW:
+        estado = "VERDE"
+    elif orcamento >= 4.2:
+        estado = "AMARELO"
+    else:
+        estado = "VERMELHO"
+
+    pm_posto = _get_pm(posto_id)
+    with _state_lock:
+        decisao = pm_posto.aplicar_orcamento(orcamento)
+        if decisao and decisao.throttle_events:
+            ativas = _posto_sms[posto_id].list_active()
+            if decisao.severity == "ok":
+                mb.on_rebalance(decisao)
+            elif ativas:
+                mb.on_throttle(ativas[0], decisao)
+
+    _atualizar_carregadores_livres()
+    return jsonify({
+        "ok": True,
+        "posto_id": posto_id,
+        "disponivel_w": disponivel_w,
+        "orcamento_kw": round(orcamento, 2),
+        "estado": estado,
+        "carros_conectados": _posto_sms[posto_id].active_count(),
+        "limite_kw": pm_posto.limit_kw,
+        "alocado_kw": _posto_sms[posto_id].total_allocated_power_kw(),
+        "redistribuido": bool(decisao and decisao.redistributed),
+        "eventos": decisao.throttle_events if decisao else [],
+    })
+
 
 
 # ---------------------------------------------------------------------------
@@ -2865,9 +3267,11 @@ def _seed_demo() -> None:
     Cenários montados:
       • Berrini (P3): 5 conectores ocupados → posto LOTADO e em THROTTLE.
           C5 (VIP) = assinante (Yan); C3 = corporativo (Felipe); demais = padrão.
-      • Paulista (P1): 4 conectores (C1–C4) carregando, C5 (VIP) livre.
+      • Faria Lima (P2): 4 conectores (C1–C4) carregando, C5 (VIP) livre.
           4×11 kW excede o limite de 33 kW → cenário de THROTTLE pré-montado.
           Composição: 2 padrão, 1 corporativo (Allan) e 1 assinante (Amanda).
+      • Paulista (P1): começa VAZIA de propósito. É o posto que o totem físico
+          (ESP32) simula: as portas 1 a 3 ocupam P1-C1 a P1-C3.
 
     Cada sessão recebe um tempo de início recuado (alguns minutos atrás), de
     modo que já exibam minutos de recarga e energia acumulada. A função é
@@ -2900,12 +3304,13 @@ def _seed_demo() -> None:
         ("P3-C3", "Felipe",   UserType.CORPORATE,  11, ""),
         ("P3-C4", "Henrique", UserType.STANDARD,    7, ""),
         ("P3-C5", "Yan",      UserType.SUBSCRIBER,  4, ""),   # VIP → assinante
-        # Paulista — 4 conectores (C1–C4) carregando; C5 (VIP) fica LIVRE.
+        # Faria Lima — 4 conectores (C1–C4) carregando; C5 (VIP) fica LIVRE.
         # 4×11 kW projetado excede 33 kW → cenário de throttle pré-montado.
-        ("P1-C1", "Damaceno",       UserType.STANDARD,   22, ""),
-        ("P1-C2", "Caio",           UserType.STANDARD,   16, ""),
-        ("P1-C3", "Allan Souza",    UserType.CORPORATE,   9, "allan"),
-        ("P1-C4", "Amanda Ribeiro", UserType.SUBSCRIBER,  5, "amanda"),
+        # (Era a Paulista; ela foi liberada para o totem físico — ver docstring.)
+        ("P2-C1", "Damaceno",       UserType.STANDARD,   22, ""),
+        ("P2-C2", "Caio",           UserType.STANDARD,   16, ""),
+        ("P2-C3", "Allan Souza",    UserType.CORPORATE,   9, "allan"),
+        ("P2-C4", "Amanda Ribeiro", UserType.SUBSCRIBER,  5, "amanda"),
     ]
 
     agora = datetime.datetime.now()
@@ -3017,6 +3422,9 @@ if __name__ == "__main__":
     print("╠" + "═" * (largura - 1) + "╣")
     print(_linha(f"Local  http://localhost:{porta}"))
     print(_linha(f"Rede   http://{ip_local}:{porta}"))
+    print(_linha(f"ESP32  POST http://{ip_local}:{porta}/api/esp32/portas"))
+    if esp32.usando_token_padrao():
+        print(_linha("       token de DEV em uso (CHARGEGRID_ESP32_TOKEN)"))
     print(_linha())
     print(_linha("Contas de demonstração — senha 1234 para todas:"))
     for chave, perfil in auth.CONTAS.items():

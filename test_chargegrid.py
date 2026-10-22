@@ -465,6 +465,28 @@ def _app_limpo(monkeypatch_db_path):
 
 
 @pytest.fixture
+def fora_do_pico(monkeypatch):
+    """
+    Fixa a tarifa fora do horário de pico (10h) para testes que passam pelas
+    rotas do app, onde a hora vem do relógio real.
+
+    Sem isto, qualquer teste que confira valores em reais falha entre 18h e
+    22h59, quando vale o multiplicador de pico (x1,5). Quem passa `hora=`
+    explicitamente a `calculate` não é afetado.
+    """
+    import pricing_engine
+
+    original = pricing_engine.PricingEngine.calculate
+
+    def calculate(self, user_type, hora=None, minuto=0, occupancy_override=None):
+        if hora is None:
+            hora, minuto = 10, 0
+        return original(self, user_type, hora, minuto, occupancy_override)
+
+    monkeypatch.setattr(pricing_engine.PricingEngine, "calculate", calculate)
+
+
+@pytest.fixture
 def client(tmp_path):
     """
     Cliente de teste Flask autenticado como operador (staff).
@@ -1376,15 +1398,17 @@ class TestPagamento:
         linha = A._sessao_arquivada(s.session_id)
         assert linha["sinal_abatido"] == 10.0
 
-    # ---- B41: encerrar sem pagar não devolve a vaga ----------------------
-    def test_encerrar_sem_pagar_mantem_o_conector_ocupado(self, client_usuario):
+    # ---- Pagar depois: encerrar libera o conector, o valor fica pendente --
+    # (substitui a regra B41 do projeto original: "só libera com pagamento")
+    def test_encerrar_sem_pagar_retem_o_conector_e_deixa_pendente(self, client_usuario):
         import app as A
         s = self._sessao_de(A, charger="P2-C1")
         client_usuario.post(f"/sessao/{s.session_id}/encerrar")
 
-        assert A.sm.list_chargers()["P2-C1"] == s.session_id, \
-            "conector liberado sem pagamento (regressão B41)"
-        assert not A.sm.is_charger_available("P2-C1")
+        assert not A.sm.is_charger_available("P2-C1"), \
+            "com conta, o conector só é liberado depois do pagamento"
+        assert s.session_id in [p.session_id for p in
+                                A._pendencias_do_usuario("amanda")]
 
     def test_pagamento_libera_o_conector(self, client_usuario):
         import app as A
@@ -1453,10 +1477,10 @@ class TestPagamento:
 class TestCoerenciaDeEstado:
 
     # ---- B44: ocupação conta conectores, não sessões ---------------------
-    def test_ocupacao_conta_conector_retido_por_pagamento(self, client_usuario):
+    def test_ocupacao_so_cai_depois_do_pagamento(self, client_usuario):
         """
-        Recarga encerrada e não paga segura o conector; a tarifa de demanda
-        e o painel precisam enxergar essa vaga como ocupada.
+        Encerrar sem pagar retém o conector (#B41): a vaga continua ocupada
+        até o pagamento ser confirmado, e só então sai da ocupação.
         """
         import app as A
         from models import UserType
@@ -1468,13 +1492,11 @@ class TestCoerenciaDeEstado:
         client_usuario.post(f"/sessao/{s.session_id}/encerrar")
 
         assert A.sm.occupancy_ratio() == ocupacao_carregando, (
-            "conector retido para pagamento sumiu da ocupação (regressão B44)"
+            "conector retido até o pagamento continua na ocupação"
         )
         client_usuario.post(f"/pagamento/{s.session_id}/confirmar",
                             data={"metodo": "NEXUSCOIN"})
-        assert A.sm.occupancy_ratio() < ocupacao_carregando, (
-            "depois de pago, o conector volta a contar como livre"
-        )
+        assert A.sm.occupancy_ratio() < ocupacao_carregando
 
     # ---- B46: painel do operador e reservas ------------------------------
     def test_painel_nao_oferece_conector_reservado(self, client):
@@ -2575,12 +2597,13 @@ class TestRegrasDeAcessoPorRota:
                               data={"metodo": "NEXUSCOIN"})
             assert "/recibo/" in resposta.headers.get("Location", "")
 
-    def test_sessao_avulsa_nao_e_arquivada_pelo_fluxo_com_conta(self, tmp_path):
+    def test_sessao_avulsa_nao_e_arquivada_pelo_fluxo_com_conta(self, tmp_path, monkeypatch):
         """
         A sessão avulsa tem um token como dono. Se o fluxo com conta pudesse
         arquivá-la, a caução nunca seria acertada: quem devolve o troco é o
         encerramento do totem.
         """
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
             c.get("/modo/totem")
@@ -2733,7 +2756,7 @@ class TestModos:
     def test_conector_do_totem_configuravel_e_sem_vip(self, client_anonimo):
         client_anonimo.get("/modo/totem")
         client_anonimo.post("/totem/configurar", data={"charger_id": "P1-C5"})
-        assert "C1 · Faria Lima" in client_anonimo.get("/totem").get_data(as_text=True)
+        assert "C4 · Paulista" in client_anonimo.get("/totem").get_data(as_text=True)
         client_anonimo.post("/totem/configurar", data={"charger_id": "P3-C2"})
         assert "C2 · Berrini" in client_anonimo.get("/totem").get_data(as_text=True)
 
@@ -2889,7 +2912,8 @@ class TestTotemComConta:
             assert "Este código expirou" not in html_post_reload
             assert "Recarregando no Totem" in html_post_reload
 
-    def test_totem_so_inicia_no_proprio_conector(self, tmp_path):
+    def test_totem_so_inicia_no_proprio_conector(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
             self._entrar_pelo_celular(c)
@@ -3223,11 +3247,12 @@ class TestRobustezEConcorrencia:
             sinal_segunda = app_module._sinal_da_reserva("amanda", "P2-C1")
             assert sinal_segunda == 0.0
 
-    def test_totem_avulso_excedente_acima_de_50_exige_pagamento(self, tmp_path):
+    def test_totem_avulso_excedente_acima_de_50_exige_pagamento(self, tmp_path, fora_do_pico, monkeypatch):
         """
         Recarga avulsa com consumo > R$ 50: ao encerrar no totem, deve solicitar
         pagamento do excedente e só liberar o conector após o pagamento ser confirmado.
         """
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
             c.get("/modo/totem")
@@ -3235,7 +3260,8 @@ class TestRobustezEConcorrencia:
             c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
             sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
 
-            # Simula consumo acima de R$ 50 (50 kWh = R$ 60,00)
+            # Simula consumo acima de R$ 50 (50 kWh a R$ 1,20/kWh = R$ 60,00)
+            sessao.tariff_kwh = 1.20
             sessao.energy_kwh = 50.0
             sessao.total_cost_brl = 60.0
 
@@ -3258,11 +3284,12 @@ class TestRobustezEConcorrencia:
             assert linha["sinal_abatido"] == 50.0
             assert linha["custo_brl"] == 60.0
 
-    def test_totem_avulso_abaixo_de_50_estorna_automatico(self, tmp_path):
+    def test_totem_avulso_abaixo_de_50_estorna_automatico(self, tmp_path, fora_do_pico, monkeypatch):
         """
         Recarga avulsa com consumo <= R$ 50: ao encerrar no totem, deduz do sinal,
         libera o conector imediatamente e emite o recibo com o estorno sem pedir novo pagamento.
         """
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
             c.get("/modo/totem")
@@ -3270,7 +3297,8 @@ class TestRobustezEConcorrencia:
             c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
             sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
 
-            # Consumo de R$ 6,00
+            # Consumo de R$ 6,00 (5 kWh a R$ 1,20/kWh)
+            sessao.tariff_kwh = 1.20
             sessao.energy_kwh = 5.0
             sessao.total_cost_brl = 6.0
 
@@ -3344,11 +3372,12 @@ class TestRobustezEConcorrencia:
             assert dados["codigo"] == 404
             assert dados["erro"] == "Recurso não encontrado"
 
-    def test_totem_pagamento_status_polling_omnichannel(self, tmp_path):
+    def test_totem_pagamento_status_polling_omnichannel(self, tmp_path, monkeypatch):
         """
         Endpoint /totem/pagamento/<session_id>/status reporta paga=False durante
         a pendência e paga=True com redirecionamento ao recibo quando arquivada.
         """
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
         app_module = _app_limpo(tmp_path)
         with app_module.app.test_client() as c:
             c.get("/modo/totem")
@@ -3379,4 +3408,971 @@ class TestRobustezEConcorrencia:
             assert f"/totem/recibo/{sessao.session_id}" in dados["redirect"]
 
 
+class TestMelhoriasComerciais2026:
+    """Cobertura das melhorias de resiliência, integração Pico W e paridade de regras."""
 
+    def test_logica_recarga_desconto_corporativo(self):
+        import logica_recarga
+
+        assert logica_recarga.DESCONTO_CORPORATIVO == 0.10
+        assert round(logica_recarga.calcular_tarifa(14, 0, "C"), 2) == 1.08
+
+    def test_qr_svg_escapa_rotulo_html(self):
+        import qr
+
+        svg = qr.qr_svg("PIX-123", rotulo='Teste "A" & <B>')
+        assert 'aria-label="Teste &quot;A&quot; &amp; &lt;B&gt;"' in svg
+
+    def test_power_manager_aplicar_orcamento_bidirecional(self, sm, pm, pe):
+        from models import SessionStatus, UserType
+
+        sessoes = [
+            _start(sm, pm, pe, f"P1-C{i}", UserType.STANDARD)[0]
+            for i in range(1, 4)
+        ]
+        assert sm.total_allocated_power_kw() == 33.0
+
+        # Queda de orçamento para 15 kW força redistribuição (5.0 kW por carro)
+        res_queda = pm.aplicar_orcamento(15.0)
+        assert res_queda is not None
+        assert res_queda.redistributed is True
+        assert sm.total_allocated_power_kw() == 15.0
+        assert all(s.status == SessionStatus.THROTTLED for s in sessoes)
+
+        # Retorno do orçamento para 33 kW restaura todos para 11 kW
+        res_subida = pm.aplicar_orcamento(33.0)
+        assert res_subida is not None
+        assert sm.total_allocated_power_kw() == 33.0
+        assert all(s.allocated_power_kw == 11.0 for s in sessoes)
+        assert all(s.status == SessionStatus.CHARGING for s in sessoes)
+
+    def test_api_energia_pico_watts_e_orcamento_kw(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        from models import UserType
+
+        for i in range(1, 4):
+            s = app_module.sm.create_session(
+                f"P1-C{i}", f"PIC1A0{i}", f"Driver {i}", UserType.STANDARD, 11.0
+            )
+            res = app_module.posto_pms["P1"].allocate(s)
+            app_module.sm.start_charging(s.session_id, res.granted_kw, 1.20)
+
+        with app_module.app.test_client() as c:
+            # Sem token -> 401
+            assert c.post("/api/energia", json={"orcamento_kw": 15.0}).status_code == 401
+
+            # Contrato do Pico em watts (1800 W - 1500 W = 300 W -> 4.5 kW -> AMARELO)
+            resp_amarelo = c.post(
+                "/api/energia",
+                json={"geracao_w": 1800, "consumo_w": 1500, "posto_id": "P1"},
+                headers={"X-Token": "chargegrid-pico"},
+            )
+            assert resp_amarelo.status_code == 200
+            d_am = resp_amarelo.get_json()
+            assert d_am["ok"] is True
+            assert d_am["estado"] == "AMARELO"
+            assert d_am["orcamento_kw"] == 4.5
+            # 3 carros no piso físico de 4.2 kW = 12.6 kW
+            assert d_am["alocado_kw"] == 12.6
+
+            # Retorno ao estado VERDE (4000 W - 1500 W = 2500 W -> 37.5 kW)
+            resp_verde = c.post(
+                "/api/energia",
+                json={"geracao_w": 4000, "consumo_w": 1500, "posto_id": "P1"},
+                headers={"X-Token": "chargegrid-pico"},
+            )
+            assert resp_verde.status_code == 200
+            d_vd = resp_verde.get_json()
+            assert d_vd["estado"] == "VERDE"
+            assert d_vd["alocado_kw"] == 33.0
+
+            # Payloads malformados (lista JSON, NaN, Infinity) devem retornar 400 sem corromper o limite
+            for payload_invalido in (
+                "[1, 2, 3]",
+                '{"geracao_w": "NaN", "consumo_w": 100}',
+                '{"orcamento_kw": "Infinity"}',
+            ):
+                r_inv = c.post(
+                    "/api/energia",
+                    data=payload_invalido,
+                    content_type="application/json",
+                    headers={"X-Token": "chargegrid-pico"},
+                )
+                assert r_inv.status_code == 400
+
+    def test_demo_reset_restaura_memoria_e_banco(self, tmp_path):
+        app_module = _app_limpo(tmp_path)
+        app_module.posto_pms["P1"].limit_kw = 15.0
+        with app_module.app.test_client() as c:
+            c.post("/login", data={"usuario": "mylon", "senha": "1234"})
+            resp = c.post("/admin/demo-reset")
+            assert resp.status_code == 302
+            assert app_module.posto_pms["P1"].limit_kw == 33.0
+            assert app_module.sm.active_count() == 9
+
+    def test_totem_encerrar_rebalanceia_demais_conectores_do_posto(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
+        app_module = _app_limpo(tmp_path)
+        from models import UserType
+
+        # Preenche P2-C2, P2-C3, P2-C4 com 11 kW cada (33 kW no total)
+        outras = []
+        for idx in (2, 3, 4):
+            s = app_module.sm.create_session(
+                f"P2-C{idx}", f"REB2B0{idx}", f"Motorista {idx}", UserType.STANDARD, 11.0
+            )
+            res = app_module.posto_pms["P2"].allocate(s)
+            app_module.sm.start_charging(s.session_id, res.granted_kw, 1.20)
+            outras.append(s)
+
+        with app_module.app.test_client() as c:
+            # Inicia 4ª sessão pelo totem no P2-C1 (entra em throttle: 8.25 kW cada)
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "TOT4D99"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
+            assert all(s.allocated_power_kw == 8.25 for s in outras)
+
+            # Encerra no totem: os outros 3 carros devem voltar a 11.0 kW imediatamente
+            c.post("/totem/encerrar")
+            assert all(s.allocated_power_kw == 11.0 for s in outras)
+
+    def test_avulso_pagar_excedente_rejeita_nexuscoin(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(__import__("totem"), "CONECTOR_PADRAO", "P2-C1")  # cenário: totem no Faria Lima C1
+        import datetime
+        app_module = _app_limpo(tmp_path)
+        with app_module.app.test_client() as c:
+            c.get("/modo/totem")
+            c.post("/totem/sem-conta", data={"placa": "AVX9E88"})
+            c.post("/totem/sem-conta/pagar", data={"metodo": "PIX"})
+            sessao = next(s for s in app_module.sm.list_active() if s.charger_id == "P2-C1")
+            token = sessao.owner.split(":", 1)[1]
+
+            sessao.tariff_kwh = 1.0
+            sessao.energy_kwh = 65.0
+            sessao.total_cost_brl = 65.0
+            sessao.last_energy_update = datetime.datetime.now()
+
+            c.post(f"/avulso/{token}/encerrar")
+            assert app_module.sm.is_charger_available("P2-C1") is False
+
+            # Tentativa de burlar o formulário com NEXUSCOIN não pode liberar o conector
+            c.post(f"/avulso/{token}/pagar-excedente", data={"metodo": "NEXUSCOIN"})
+            assert app_module.sm.is_charger_available("P2-C1") is False
+
+
+# =============================================================================
+#  Totem físico (ESP32) — Homologação, Fase 1
+# =============================================================================
+
+def _porta_esp(n=1, corrente=0.0, presente=False, ok=True):
+    """Uma porta no formato que o firmware envia."""
+    return {"porta": n, "corrente_ma": corrente, "presente": presente,
+            "leitura_ok": ok}
+
+
+class TestEsp32Mensagem:
+    """Validação da mensagem do ESP32: o que entra e o que é recusado."""
+
+    def test_mensagem_valida_com_tres_portas(self):
+        import esp32
+        portas, fw = esp32.validar_mensagem({
+            "fw": "0.1.0",
+            "portas": [_porta_esp(1, 412.5, True), _porta_esp(2), _porta_esp(3)],
+        })
+        assert fw == "0.1.0"
+        assert [p["conector"] for p in portas] == ["P1-C1", "P1-C2", "P1-C3"]
+        assert portas[0]["presente"] is True and portas[0]["corrente_ma"] == 412.5
+
+    def test_firmware_e_opcional(self):
+        import esp32
+        _, fw = esp32.validar_mensagem({"portas": [_porta_esp(1)]})
+        assert fw == ""
+
+    @pytest.mark.parametrize("corpo", [
+        None, [], "texto", 42,
+        {}, {"portas": []}, {"portas": "x"}, {"portas": [1]},
+    ])
+    def test_estrutura_invalida_e_recusada(self, corpo):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem(corpo)
+
+    @pytest.mark.parametrize("numero", [0, 4, -1, 1.5, "1", None, True])
+    def test_numero_de_porta_invalido(self, numero):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem({"portas": [_porta_esp(numero)]})
+
+    def test_porta_repetida_e_recusada(self):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida, match="repetido"):
+            esp32.validar_mensagem({"portas": [_porta_esp(1), _porta_esp(1)]})
+
+    def test_mais_de_tres_portas_e_recusado(self):
+        import esp32
+        quatro = [_porta_esp(1), _porta_esp(2), _porta_esp(3), _porta_esp(3)]
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem({"portas": quatro})
+
+    @pytest.mark.parametrize("corrente", [
+        float("nan"), float("inf"), float("-inf"), 5000.1, -500.1,
+        "412", None, True,
+    ])
+    def test_corrente_invalida_e_recusada(self, corrente):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem({"portas": [_porta_esp(1, corrente)]})
+
+    def test_corrente_nos_limites_e_aceita(self):
+        import esp32
+        for valor in (esp32.CORRENTE_MIN_MA, 0, esp32.CORRENTE_MAX_MA):
+            esp32.validar_mensagem({"portas": [_porta_esp(1, valor)]})
+
+    def test_presenca_vem_da_corrente_e_nao_do_firmware(self):
+        """O servidor decide pelo próprio limiar: calibrar não exige regravar."""
+        import esp32
+        abaixo = _porta_esp(1, esp32.LIMIAR_PRESENCA_MA - 1, presente=True)
+        acima = _porta_esp(2, esp32.LIMIAR_PRESENCA_MA, presente=False)
+        portas, _ = esp32.validar_mensagem({"portas": [abaixo, acima]})
+        assert [p["presente"] for p in portas] == [False, True]
+
+    def test_potencia_em_watts_vira_kw(self):
+        """Celular no lugar do carro: 5 V × 1000 mA = 5 W → 5 kW."""
+        import esp32
+        plugada = {**_porta_esp(1, 1000.0), "tensao_v": 5.0}
+        livre = {**_porta_esp(2, 3.0), "tensao_v": 5.0}       # ruído
+        sem_tensao = _porta_esp(3, 1000.0)                    # firmware antigo
+        portas, _ = esp32.validar_mensagem(
+            {"portas": [plugada, livre, sem_tensao]})
+        assert [p["potencia_kw"] for p in portas] == [5.0, 0.0, None]
+
+    @pytest.mark.parametrize("tensao", [-0.1, 32.1, float("nan"), True, "5"])
+    def test_tensao_invalida_e_recusada(self, tensao):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem(
+                {"portas": [{**_porta_esp(1, 100.0), "tensao_v": tensao}]})
+
+    def test_sem_leitura_nunca_conta_como_presente(self):
+        """Sensor mudo não pode virar 'dispositivo plugado' por engano."""
+        import esp32
+        portas, _ = esp32.validar_mensagem(
+            {"portas": [_porta_esp(1, 999.0, presente=True, ok=False)]})
+        assert portas[0]["presente"] is False
+        assert portas[0]["leitura_ok"] is False
+
+    def test_firmware_longo_demais_e_recusado(self):
+        import esp32
+        with pytest.raises(esp32.MensagemInvalida):
+            esp32.validar_mensagem({"fw": "x" * 33, "portas": [_porta_esp(1)]})
+
+
+class TestEsp32Token:
+    def test_token_padrao_de_desenvolvimento(self, monkeypatch):
+        import esp32
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        assert esp32.usando_token_padrao() is True
+        assert esp32.token_valido(esp32.TOKEN_PADRAO_DEV) is True
+
+    def test_token_do_ambiente_substitui_o_padrao(self, monkeypatch):
+        import esp32
+        monkeypatch.setenv("CHARGEGRID_ESP32_TOKEN", "segredo-da-banca")
+        assert esp32.usando_token_padrao() is False
+        assert esp32.token_valido("segredo-da-banca") is True
+        assert esp32.token_valido(esp32.TOKEN_PADRAO_DEV) is False
+
+    @pytest.mark.parametrize("recebido", [None, "", "errado", " "])
+    def test_token_ausente_ou_errado(self, recebido, monkeypatch):
+        import esp32
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        assert esp32.token_valido(recebido) is False
+
+
+class TestEsp32Estado:
+    def _agora(self):
+        import datetime
+        return datetime.datetime(2026, 10, 18, 12, 0, 0)
+
+    def _portas(self, **kw):
+        import esp32
+        return esp32.validar_mensagem({"portas": [
+            _porta_esp(1, 412.0, True), _porta_esp(2, 0.0, False),
+            _porta_esp(3, 0.0, False, ok=False)]})[0]
+
+    def test_sem_nenhum_contato_tudo_sem_dados(self):
+        import esp32
+        snap = esp32.EstadoPortas().instantaneo(self._agora())
+        assert snap["online"] is False
+        assert {p["estado"] for p in snap["portas"]} == {"sem_dados"}
+        assert snap["ultimo_contato"] is None
+
+    def test_estados_por_porta_quando_online(self):
+        import esp32
+        e = esp32.EstadoPortas()
+        e.atualizar(self._portas(), "0.1.0", self._agora())
+        snap = e.instantaneo(self._agora())
+        assert snap["online"] is True and snap["firmware"] == "0.1.0"
+        assert [p["estado"] for p in snap["portas"]] == [
+            "plugada", "livre", "sem_leitura"]
+
+    def test_vira_offline_apos_o_timeout(self):
+        import datetime
+        import esp32
+        e = esp32.EstadoPortas()
+        e.atualizar(self._portas(), "", self._agora())
+        limite = datetime.timedelta(seconds=esp32.TIMEOUT_OFFLINE_S)
+        assert e.online(self._agora() + limite) is True
+        assert e.online(self._agora() + limite
+                        + datetime.timedelta(seconds=1)) is False
+        depois = e.instantaneo(self._agora() + limite
+                               + datetime.timedelta(seconds=5))
+        assert {p["estado"] for p in depois["portas"]} == {"offline"}
+
+    def test_mensagem_parcial_preserva_as_outras_portas(self):
+        import esp32
+        e = esp32.EstadoPortas()
+        e.atualizar(self._portas(), "", self._agora())
+        nova = esp32.validar_mensagem(
+            {"portas": [_porta_esp(2, 300.0, True)]})[0]
+        e.atualizar(nova, "", self._agora())
+        estados = [p["estado"] for p in e.instantaneo(self._agora())["portas"]]
+        assert estados == ["plugada", "plugada", "sem_leitura"]
+
+    def test_limpar_esquece_tudo(self):
+        import esp32
+        e = esp32.EstadoPortas()
+        e.atualizar(self._portas(), "0.1.0", self._agora())
+        e.limpar()
+        assert e.online(self._agora()) is False
+        assert e.instantaneo(self._agora())["firmware"] is None
+
+
+class TestEsp32Rotas:
+    """Rotas HTTP do totem físico: token, guarda de acesso e painel."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _sem_token_do_ambiente(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+
+    def _msg(self, **plugada):
+        return {"fw": "teste", "portas": [
+            _porta_esp(1, 410.0, True), _porta_esp(2), _porta_esp(3)]}
+
+    def test_sem_token_responde_401(self, client_anonimo):
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg())
+        assert r.status_code == 401
+        assert r.get_json()["ok"] is False
+
+    def test_token_errado_responde_401(self, client_anonimo):
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg(),
+                                headers={"X-ESP32-Token": "errado"})
+        assert r.status_code == 401
+
+    def test_post_valido_sem_login_responde_200(self, client_anonimo):
+        """O ESP32 não tem login: o token é a credencial dele."""
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg(),
+                                headers=self.HEADERS)
+        assert r.status_code == 200
+        dados = r.get_json()
+        assert dados["ok"] is True
+        assert [p["conector"] for p in dados["portas"]] == [
+            "P1-C1", "P1-C2", "P1-C3"]
+        assert dados["portas"][0]["presente"] is True
+        assert dados["posto"]["posto"] == "P1"
+        assert dados["posto"]["limite_kw"] == 33.0
+
+    def test_modo_totem_nao_desvia_a_rota_do_esp32(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg(),
+                                headers=self.HEADERS)
+        assert r.status_code == 200
+
+    def test_corpo_que_nao_e_json_responde_400(self, client_anonimo):
+        r = client_anonimo.post("/api/esp32/portas", data="isto nao e json",
+                                headers=self.HEADERS)
+        assert r.status_code == 400
+
+    def test_mensagem_invalida_responde_400_com_motivo(self, client_anonimo):
+        r = client_anonimo.post("/api/esp32/portas",
+                                json={"portas": [_porta_esp(9)]},
+                                headers=self.HEADERS)
+        assert r.status_code == 400
+        assert "porta" in r.get_json()["erro"]
+
+    def test_get_na_rota_de_envio_e_405(self, client_anonimo):
+        assert client_anonimo.get("/api/esp32/portas",
+                                  headers=self.HEADERS).status_code == 405
+
+    def test_mensagem_recusada_nao_altera_o_estado(self, client):
+        client.post("/api/esp32/portas", json={"portas": [_porta_esp(9)]},
+                    headers=self.HEADERS)
+        estado = client.get("/api/esp32/estado").get_json()
+        assert estado["online"] is False
+
+    def test_estado_reflete_o_que_o_esp32_enviou(self, client):
+        client.post("/api/esp32/portas", json=self._msg(),
+                    headers=self.HEADERS)
+        estado = client.get("/api/esp32/estado").get_json()
+        assert estado["online"] is True
+        assert estado["firmware"] == "teste"
+        assert [p["estado"] for p in estado["portas"]] == [
+            "plugada", "livre", "livre"]
+        assert estado["posto_resumo"]["limite_kw"] == 33.0
+
+    def test_estado_exige_login(self, client_anonimo):
+        r = client_anonimo.get("/api/esp32/estado")
+        assert r.status_code == 302 and "/login" in r.headers["Location"]
+
+    def test_estado_e_painel_restritos_ao_operador(self, client_usuario):
+        for rota in ("/api/esp32/estado", "/esp32"):
+            r = client_usuario.get(rota)
+            assert r.status_code == 302, rota
+
+    def test_painel_abre_para_o_operador(self, client):
+        r = client.get("/esp32")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "Totem físico" in html and "ChargeGrid Paulista" in html
+        for n in (1, 2, 3):
+            assert f'id="porta-{n}"' in html
+
+    def test_token_do_ambiente_e_exigido(self, client_anonimo, monkeypatch):
+        monkeypatch.setenv("CHARGEGRID_ESP32_TOKEN", "segredo")
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg(),
+                                headers=self.HEADERS)          # token de dev
+        assert r.status_code == 401
+        r = client_anonimo.post("/api/esp32/portas", json=self._msg(),
+                                headers={"X-ESP32-Token": "segredo"})
+        assert r.status_code == 200
+
+
+class TestTotemFisicoTela:
+    """Fase 2a: a tela do totem segue a porta física onde alguém plugou."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _limpo(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        import app as app_mod
+        app_mod.portas_fisicas.limpar()
+        yield
+        app_mod.portas_fisicas.limpar()
+
+    def _enviar(self, c, plugadas=()):
+        c.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [
+                _porta_esp(n, 410.0 if n in plugadas else 0.0, n in plugadas)
+                for n in (1, 2, 3)]})
+
+    def test_sem_esp32_nao_ha_proxima(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        d = client_anonimo.get("/totem/fisico/estado").get_json()
+        assert d["online"] is False and d["proxima"] is None
+
+    def test_porta_plugada_sem_sessao_e_a_proxima(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        self._enviar(client_anonimo, plugadas={2})
+        d = client_anonimo.get("/totem/fisico/estado").get_json()
+        assert d["online"] is True and d["proxima"] == 2
+        assert d["portas"][1]["conector"] == "P1-C2"
+        assert d["portas"][1]["livre_para_iniciar"] is True
+
+    def test_porta_com_sessao_nao_pede_identificacao(self, client_anonimo):
+        import app as app_mod
+        app_mod._iniciar_recarga("P1-C1", "ABC1D23", "Teste",
+                                 app_mod.UserType.STANDARD, "dono-teste")
+        client_anonimo.set_cookie("modo", "totem")
+        self._enviar(client_anonimo, plugadas={1})
+        d = client_anonimo.get("/totem/fisico/estado").get_json()
+        assert d["proxima"] is None and d["portas"][0]["em_uso"] is True
+
+    def test_escolher_porta_aponta_o_totem_para_o_conector(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        r = client_anonimo.get("/totem/fisico/porta/3")
+        assert r.status_code == 302 and r.headers["Location"].endswith("/totem")
+        assert "totem_cid=P1-C3" in r.headers.get("Set-Cookie", "")
+        assert "P1-C3" in client_anonimo.get("/totem").get_data(as_text=True)
+
+    def test_porta_inexistente_volta_para_a_tela_de_espera(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        r = client_anonimo.get("/totem/fisico/porta/9")
+        assert r.headers["Location"].endswith("/totem/fisico")
+
+    def test_tela_de_espera_abre(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        r = client_anonimo.get("/totem/fisico")
+        assert r.status_code == 200 and "Plugue o veículo" in r.get_data(as_text=True)
+
+
+class TestDetectorDesplugue:
+    """Fase 2b: quando a retirada do cabo encerra a recarga (lógica pura)."""
+
+    @pytest.fixture(autouse=True)
+    def _modulo(self):
+        global esp32
+        import esp32
+
+    def _portas(self, presente=False, ok=True):
+        return [{"porta": 1, "conector": "P1-C1", "presente": presente,
+                 "leitura_ok": ok}]
+
+    def test_encerra_apos_leituras_livres_seguidas(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=3)
+        ativa = {"P1-C1": "S1"}
+        assert d.processar(self._portas(True), ativa) == []
+        assert d.processar(self._portas(False), ativa) == []
+        assert d.processar(self._portas(False), ativa) == []
+        assert d.processar(self._portas(False), ativa) == ["P1-C1"]
+
+    def test_mau_contato_de_uma_leitura_nao_encerra(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=3)
+        ativa = {"P1-C1": "S1"}
+        d.processar(self._portas(True), ativa)
+        d.processar(self._portas(False), ativa)
+        d.processar(self._portas(False), ativa)
+        assert d.processar(self._portas(True), ativa) == []   # voltou: zera
+        assert d.processar(self._portas(False), ativa) == []
+        assert d.processar(self._portas(False), ativa) == []
+
+    def test_sessao_que_nunca_viu_cabo_nao_e_encerrada(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=1)
+        for _ in range(5):
+            assert d.processar(self._portas(False), {"P1-C1": "S1"}) == []
+
+    def test_sensor_mudo_nao_conta_como_livre(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=1)
+        ativa = {"P1-C1": "S1"}
+        d.processar(self._portas(True), ativa)
+        assert d.processar(self._portas(False, ok=False), ativa) == []
+
+    def test_nova_sessao_no_conector_nao_herda_o_cabo_da_anterior(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=1)
+        d.processar(self._portas(True), {"P1-C1": "S1"})
+        assert d.processar(self._portas(False), {"P1-C1": "S2"}) == []
+
+    def test_sem_sessao_ativa_nada_a_encerrar(self):
+        d = esp32.DetectorDesplugue(leituras_para_encerrar=1)
+        d.processar(self._portas(True), {"P1-C1": "S1"})
+        assert d.processar(self._portas(False), {}) == []
+
+
+class TestDesplugueNoServidor:
+    """Fase 2b: retirar o cabo encerra a recarga pelo caminho do servidor."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _limpo(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        import app as app_mod
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+        yield
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+
+    def _enviar(self, c, p1_plugada):
+        c.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [
+                _porta_esp(1, 410.0 if p1_plugada else 0.0, p1_plugada),
+                _porta_esp(2), _porta_esp(3)]})
+
+    def _iniciar(self, dono="dono-teste"):
+        import app as app_mod
+        return app_mod._iniciar_recarga(
+            "P1-C1", "ABC1D23", "Teste", app_mod.UserType.STANDARD, dono)
+
+    def test_desplugar_encerra_retem_e_deixa_pagamento_pendente(self, client_anonimo):
+        sessao = self._iniciar("luiz")
+        self._enviar(client_anonimo, True)
+        for _ in range(3):
+            self._enviar(client_anonimo, False)
+        assert sessao.is_active is False
+        import app as app_mod
+        assert not app_mod.sm.is_charger_available("P1-C1")
+        assert sessao.session_id in [p.session_id for p in
+                                     app_mod._pendencias_do_usuario("luiz")]
+
+    def test_recarga_sem_cabo_fisico_nao_e_encerrada(self, client_anonimo):
+        sessao = self._iniciar()
+        for _ in range(6):
+            self._enviar(client_anonimo, False)
+        assert sessao.is_active is True
+
+    def test_mau_contato_nao_encerra(self, client_anonimo):
+        sessao = self._iniciar()
+        self._enviar(client_anonimo, True)
+        self._enviar(client_anonimo, False)
+        self._enviar(client_anonimo, False)
+        self._enviar(client_anonimo, True)
+        self._enviar(client_anonimo, False)
+        assert sessao.is_active is True
+
+
+class TestSemaforoDoPosto:
+    """Fase 3: a cor dos LEDs vem da ocupação do posto na aplicação."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _limpo(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+
+    @pytest.mark.parametrize("pct,cor", [
+        (0.0, "verde"), (33.3, "verde"), (49.9, "verde"),
+        (50.0, "amarelo"), (66.7, "amarelo"), (99.8, "amarelo"),
+        (99.9, "vermelho"), (100.0, "vermelho"),
+    ])
+    def test_cor_pela_ocupacao(self, pct, cor):
+        import esp32
+        assert esp32.semaforo_do_posto(pct) == cor
+
+    def test_resposta_do_esp32_traz_o_semaforo(self, client_anonimo):
+        r = client_anonimo.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [_porta_esp(1), _porta_esp(2), _porta_esp(3)]})
+        posto = r.get_json()["posto"]
+        # P1 começa vazio na demonstração: verde
+        assert posto["semaforo"] == "verde"
+
+    def test_sessao_do_app_mexe_no_semaforo(self, client_anonimo):
+        import app as app_mod
+        for i, cid in enumerate(("P1-C1", "P1-C2", "P1-C3")):
+            app_mod._iniciar_recarga(cid, f"SEM{i}A00", "T",
+                                     app_mod.UserType.STANDARD, f"dono-{i}")
+        r = client_anonimo.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [_porta_esp(n) for n in (1, 2, 3)]})
+        assert r.get_json()["posto"]["semaforo"] == "vermelho"
+
+
+class TestCelularEntraComConta:
+    """O celular confirma o QR do totem sem senha, com a conta do próprio celular."""
+
+    def _parear(self):
+        import totem
+        return totem.criar_pareamento("P1-C2")
+
+    def test_tela_nao_pede_senha(self, client_anonimo):
+        token = self._parear()
+        html = client_anonimo.get(f"/celular/parear/{token}").get_data(as_text=True)
+        assert 'name="senha"' not in html and "Confirmar e entrar" in html
+
+    def test_sem_login_usa_a_conta_do_celular(self, client_anonimo):
+        import totem
+        token = self._parear()
+        client_anonimo.post(f"/celular/parear/{token}")
+        assert totem.info_pareamento(token)["usuario"] == "luiz"
+
+    def test_celular_logado_usa_a_propria_conta(self, client_usuario):
+        import totem
+        token = self._parear()
+        client_usuario.post(f"/celular/parear/{token}")
+        assert totem.info_pareamento(token)["usuario"] == "amanda"
+
+    def test_senha_enviada_e_ignorada(self, client_anonimo):
+        import totem
+        token = self._parear()
+        client_anonimo.post(f"/celular/parear/{token}",
+                            data={"usuario": "amanda", "senha": "errada"})
+        assert totem.info_pareamento(token)["usuario"] == "luiz"
+
+    def test_operador_logado_nao_entra_no_totem(self, client_anonimo):
+        import totem
+        client_anonimo.post("/login", data={"usuario": "mylon", "senha": "1234"})
+        token = self._parear()
+        client_anonimo.post(f"/celular/parear/{token}")
+        assert totem.info_pareamento(token)["usuario"] == "luiz"
+
+
+class TestCelularAposDesplugar:
+    """Cabo retirado: o celular mostra a pendência, sem pagar pelo link do QR."""
+
+    def _preparar(self, usuario="luiz"):
+        import app as app_mod
+        import totem
+        sessao = app_mod._iniciar_recarga(
+            "P1-C1", "PAG1A23", "Teste", app_mod.UserType.STANDARD, usuario)
+        token = totem.criar_pareamento("P1-C1")
+        totem.confirmar(token, usuario)
+        return app_mod, sessao, token
+
+    def test_status_ativo(self, client_anonimo):
+        _, _, token = self._preparar()
+        d = client_anonimo.get(f"/celular/parear/{token}/status").get_json()
+        assert d["status"] == "carregando"
+
+    def test_encerrada_e_nao_paga_avisa_da_pendencia(self, client_anonimo):
+        app_mod, sessao, token = self._preparar()
+        app_mod._encerrar_retendo(sessao)
+        d = client_anonimo.get(f"/celular/parear/{token}/status").get_json()
+        assert d["status"] == "concluido" and d["pagamento_pendente"] is True
+
+    def test_recarregar_apos_o_fim_abre_em_concluida(self, client_anonimo):
+        app_mod, sessao, token = self._preparar()
+        app_mod._encerrar_retendo(sessao)
+        html = client_anonimo.get(f"/celular/parear/{token}").get_data(as_text=True)
+        assert 'id="cp-concluido" style="display: block;"' in html
+        assert 'id="cp-aguardando" style="display: none;"' in html
+        assert 'id="cp-pendente" class="cp-sub" style="display:block;' in html
+
+    def test_link_do_qr_nao_leva_ao_pagamento_nem_autentica(self, client_anonimo):
+        app_mod, sessao, token = self._preparar()
+        app_mod._encerrar_retendo(sessao)
+        r = client_anonimo.post(f"/celular/parear/{token}/pagar")
+        assert r.status_code == 404
+        html = client_anonimo.get(f"/celular/parear/{token}").get_data(as_text=True)
+        assert "Pagar agora" not in html
+
+
+class TestPagarDepois:
+    """Pagamentos pendentes: libera ao encerrar, paga na Carteira, tem limite."""
+
+    def _encerrada(self, A, usuario="amanda", cid="P2-C1", custo=10.0):
+        from models import UserType
+        s = A.sm.create_session(cid, "PEN1A23", usuario, UserType.SUBSCRIBER,
+                                11.0, owner=usuario)
+        A.sm.start_charging(s.session_id, 11.0, 1.0)
+        A.sm.finish_session(s.session_id, liberar=True)
+        s.total_cost_brl = custo
+        return s
+
+    def test_carteira_lista_a_pendencia_com_botao_de_pagar(self, client_usuario):
+        import app as A
+        s = self._encerrada(A)
+        html = client_usuario.get("/carteira").get_data(as_text=True)
+        assert "Pagamentos pendentes" in html
+        assert f"/pagamento/{s.session_id}" in html
+
+    def test_sem_pendencia_a_carteira_nao_mostra_a_secao(self, client_usuario):
+        html = client_usuario.get("/carteira").get_data(as_text=True)
+        assert "Pagamentos pendentes" not in html
+
+    def test_pagar_pela_carteira_tira_da_lista(self, client_usuario):
+        import app as A
+        s = self._encerrada(A)
+        A.wallet.garantir_conta("amanda", 100.0)
+        client_usuario.post(f"/pagamento/{s.session_id}/confirmar",
+                            data={"metodo": "NEXUSCOIN"})
+        assert s.session_id not in [p.session_id for p in
+                                    A._pendencias_do_usuario("amanda")]
+
+    def test_dentro_do_limite_nao_bloqueia(self):
+        import app as A
+        self._encerrada(A, custo=40.0)
+        assert A._bloqueio_por_pendencia("amanda") is None
+
+    def test_acima_do_limite_bloqueia_nova_recarga(self):
+        import app as A
+        from models import UserType
+        self._encerrada(A, custo=60.0)
+        self._encerrada(A, cid="P2-C2", custo=60.0)
+        assert "pendentes" in (A._bloqueio_por_pendencia("amanda") or "")
+        import pytest
+        with pytest.raises(ValueError):
+            A._iniciar_recarga("P2-C3", "NOV1A23", "Amanda",
+                               UserType.SUBSCRIBER, "amanda")
+
+    def test_pendencia_antiga_bloqueia(self):
+        import datetime
+        import app as A
+        s = self._encerrada(A, custo=5.0)
+        s.end_time = datetime.datetime.now() - datetime.timedelta(days=A.PRAZO_PENDENTE_DIAS + 1)
+        assert A._bloqueio_por_pendencia("amanda") is not None
+
+    def test_recarga_avulsa_nao_tem_bloqueio(self):
+        import app as A
+        assert A._bloqueio_por_pendencia("avulso:xyz") is None
+
+    def test_o_proximo_motorista_usa_o_conector_na_hora(self):
+        import app as A
+        s = self._encerrada(A)
+        assert A.sm.is_charger_available(s.charger_id)
+
+    def test_pagamento_nao_oferece_pagar_depois(self, client_usuario):
+        import app as A
+        s = self._encerrada(A)
+        html = client_usuario.get(f"/pagamento/{s.session_id}").get_data(as_text=True)
+        assert "Pagar depois" not in html
+
+
+class TestRecargaPrePagaSemConta:
+    """Sem conta é pré-paga: para ao atingir o valor pago; cabo retirado devolve a sobra."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _limpo(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        import app as app_mod
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+        yield
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+
+    def _avulsa(self):
+        import app as A
+        import avulso
+        dono = avulso.novo_dono()
+        s = A._iniciar_recarga("P1-C1", "AVU1A23", "Sem cadastro",
+                               A.UserType.STANDARD, dono)
+        return A, s
+
+    def _enviar(self, c, plugada):
+        c.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [_porta_esp(1, 410.0 if plugada else 0.0, plugada),
+                                  _porta_esp(2), _porta_esp(3)]})
+
+    def test_para_sozinha_ao_atingir_o_valor_pago(self):
+        import avulso
+        A, s = self._avulsa()
+        s.energy_kwh = 100.0                  # consumo muito acima do valor pago
+        assert A._aplicar_limite_avulso(s) is True
+        assert s.is_active is False
+        assert s.total_cost_brl == avulso.CAUCAO_BRL      # nunca cobra a mais
+        assert A.sm.is_charger_available("P1-C1")
+        linha = A._sessao_arquivada(s.session_id)
+        assert linha["sinal_abatido"] == avulso.CAUCAO_BRL
+        assert avulso.estorno(linha["sinal_abatido"]) == 0.0
+
+    def test_abaixo_do_valor_pago_continua(self):
+        A, s = self._avulsa()
+        assert A._aplicar_limite_avulso(s) is False
+        assert s.is_active is True
+
+    def test_conta_com_login_nao_tem_corte_por_valor(self):
+        import app as A
+        s = A._iniciar_recarga("P1-C2", "CON1A23", "Luiz",
+                               A.UserType.STANDARD, "luiz")
+        s.energy_kwh = 100.0
+        assert A._aplicar_limite_avulso(s) is False
+        assert s.is_active is True
+
+    def test_cabo_retirado_devolve_a_sobra(self, client_anonimo):
+        import avulso
+        A, s = self._avulsa()
+        self._enviar(client_anonimo, True)
+        for _ in range(3):
+            self._enviar(client_anonimo, False)
+        assert s.is_active is False
+        assert A.sm.is_charger_available("P1-C1")
+        linha = A._sessao_arquivada(s.session_id)
+        assert linha["sinal_abatido"] == s.total_cost_brl < avulso.CAUCAO_BRL
+        assert avulso.estorno(linha["sinal_abatido"]) > 0.0
+
+    def test_esp32_aplica_o_corte_por_valor_sem_ninguem_olhando_a_tela(self, client_anonimo):
+        A, s = self._avulsa()
+        s.energy_kwh = 100.0
+        self._enviar(client_anonimo, True)
+        assert s.is_active is False
+
+    def test_avisos_pre_pago_na_tela_do_totem(self, client_anonimo):
+        client_anonimo.set_cookie("modo", "totem")
+        html = client_anonimo.get("/totem/sem-conta").get_data(as_text=True)
+        assert "pré-paga" in html and "o restante é devolvido" in html
+
+
+class TestPotenciaMedida:
+    """O ESP32 mede a potência: ela, e não a alocada, entra na conta de energia."""
+
+    HEADERS = {"X-ESP32-Token": "chargegrid-esp32-dev"}
+
+    @pytest.fixture(autouse=True)
+    def _limpo(self, monkeypatch):
+        monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
+        import app as app_mod
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+        yield
+        app_mod.portas_fisicas.limpar()
+        app_mod.detector_desplugue.limpar()
+
+    def _sessao(self):
+        import app as A
+        return A, A._iniciar_recarga("P1-C1", "MED1A23", "Luiz",
+                                     A.UserType.STANDARD, "luiz")
+
+    def _enviar(self, c, corrente_ma, tensao_v=5.0):
+        return c.post("/api/esp32/portas", headers=self.HEADERS, json={
+            "fw": "t", "portas": [{**_porta_esp(1, corrente_ma), "tensao_v": tensao_v},
+                                  _porta_esp(2), _porta_esp(3)]})
+
+    def test_cabo_plugado_registra_a_potencia_medida(self, client_anonimo):
+        import session_manager as smod
+        A, s = self._sessao()
+        assert self._enviar(client_anonimo, 1000.0).status_code == 200
+        assert s.measured_power_kw == 5.0
+        assert smod.potencia_efetiva_kw(s) == 5.0
+
+    def test_potencia_limitada_a_11_kw(self, client_anonimo):
+        A, s = self._sessao()
+        self._enviar(client_anonimo, 3000.0, tensao_v=9.0)     # 27 W → 27 kW
+        assert s.measured_power_kw == 11.0
+
+    def test_sessao_sem_cabo_segue_a_alocada(self, client_anonimo):
+        import session_manager as smod
+        A, s = self._sessao()
+        self._enviar(client_anonimo, 0.0)                      # porta livre
+        assert s.measured_power_kw is None
+        assert smod.potencia_efetiva_kw(s) == s.allocated_power_kw
+
+    def test_energia_acumula_na_potencia_medida(self, client_anonimo):
+        import datetime
+        A, s = self._sessao()
+        A.sm.registrar_medicao(s, 5.0)
+        s.last_energy_update = datetime.datetime.now() - datetime.timedelta(seconds=36)
+        s.measured_at = datetime.datetime.now()
+        antes = s.energy_kwh
+        A.sm.accrue_energy(s)
+        assert abs((s.energy_kwh - antes) - 0.05) < 0.002     # 5 kW × 36 s
+
+    def test_medicao_velha_vale_zero(self, client_anonimo):
+        import datetime
+        import session_manager as smod
+        A, s = self._sessao()
+        A.sm.registrar_medicao(s, 5.0)
+        s.measured_at -= datetime.timedelta(seconds=smod.MEDICAO_VALIDA_S + 1)
+        assert smod.potencia_efetiva_kw(s) == 0.0
+
+    def test_medida_nunca_passa_da_alocada(self, client_anonimo):
+        import session_manager as smod
+        A, s = self._sessao()
+        A.sm.registrar_medicao(s, 10.0)
+        s.allocated_power_kw = 8.25                            # throttle
+        assert smod.potencia_efetiva_kw(s) == 8.25
+
+
+class TestEncerrarSemContaETotemFisico:
+    """Sem conta pode encerrar antes (devolve a sobra); o totem leva ao totem físico."""
+
+    def _avulsa(self, cid="P1-C4"):
+        import app as A
+        import avulso
+        dono = avulso.novo_dono()
+        s = A._iniciar_recarga(cid, "AVU2B34", "Sem cadastro", A.UserType.STANDARD, dono)
+        return A, s, dono.split(":", 1)[1]
+
+    def test_celular_tem_botao_e_encerrar_libera_o_conector(self, client_anonimo):
+        A, s, token = self._avulsa()
+        html = client_anonimo.get(f"/avulso/{token}").get_data(as_text=True)
+        assert "Encerrar recarga e liberar conector" in html
+        client_anonimo.post(f"/avulso/{token}/encerrar")
+        assert s.is_active is False
+        assert A.sm.is_charger_available("P1-C4")
+
+    def test_totem_mostra_encerrar_na_recarga_sem_conta(self, client_anonimo):
+        A, s, token = self._avulsa()
+        client_anonimo.get("/modo/totem")
+        with client_anonimo.session_transaction() as sess:
+            sess["usuario"] = s.owner
+        html = client_anonimo.get("/totem/carregando").get_data(as_text=True)
+        assert "Encerrar carregamento" in html
+
+    def test_totem_tem_atalho_para_o_totem_fisico(self, client_anonimo):
+        client_anonimo.get("/modo/totem")
+        html = client_anonimo.get("/totem").get_data(as_text=True)
+        assert "/totem/fisico" in html
+        espera = client_anonimo.get("/totem/fisico").get_data(as_text=True)
+        assert "Totem físico · Paulista" in espera

@@ -69,8 +69,6 @@
 
 .cost-label {
     font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     opacity: 0.65;
     font-weight: 600;
 }
@@ -78,10 +76,11 @@
 .cost-value {
     font-size: 3rem;
     font-weight: 800;
-    color: var(--cor-livre-texto);
+    color: #34D399;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
 }
-.cost-value.peak { color: var(--cor-vip-texto); }
+.cost-value.peak { color: #FBBF24; }
 
 .cost-subvalue { font-size: 0.82rem; opacity: 0.6; }
 
@@ -170,10 +169,8 @@
 .info-content { flex: 1; min-width: 0; }
 
 .info-label {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--cor-texto-secundario);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     font-weight: 600;
     margin-bottom: 2px;
 }
@@ -520,7 +517,7 @@ tbody tr {
 {% block header %}
 <header class="header">
     <div class="header-content">
-        <a href="{{ url_for('mapa') }}" class="back-button" title="Voltar ao mapa">
+        <a href="{{ url_for('mapa') }}" class="back-button" title="Voltar ao mapa" aria-label="Voltar ao mapa">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
@@ -534,7 +531,7 @@ tbody tr {
         </div>
 
         <div class="header-info">
-            <h1>Sessão Concluída</h1>
+            <h1>Recarga iniciada</h1>
             <div class="header-subtitle">{{ sessao.id_sessao }}</div>
         </div>
 
@@ -565,16 +562,7 @@ tbody tr {
 {# ── Banner fixo de aviso de pico ─────────────────────────────────── #}
 {# (removido: agora exibido como toast com duração longa no JS abaixo) #}
 
-<div class="container" id="mainContainer">
-
-    {# ── FLASH BRIDGE (mensagens do Flask → toast JS) ── #}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div id="cgi-flash-bridge" data-type="{{ category }}" data-msg="{{ message }}" style="display:none"></div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
+<main class="container" id="mainContainer">
 
     {# ── BLOCO SPRINT 2 — no topo, antes do custo, para visibilidade imediata #}
     {% if sessao.session_id_s2 %}
@@ -599,7 +587,7 @@ tbody tr {
 
         <div class="info-grid">
             <div class="info-card">
-                <div class="info-label">ID Sessão S2</div>
+                <div class="info-label">ID da sessão</div>
                 <div class="info-value" style="font-family:monospace;font-size:0.82rem;">{{ sessao.session_id_s2 }}</div>
             </div>
             <div class="info-card">
@@ -622,11 +610,11 @@ tbody tr {
                 <div class="info-value">
                     {{ "%.1f"|format(sessao.potencia_alocada) }} kW
                     {% if sessao.potencia_alocada < 11.0 %}
-                    <span style="font-size:0.75rem;color:var(--cor-vip-texto);margin-left:4px;">(throttled)</span>
+                    <span style="font-size:0.75rem;color:var(--cor-vip-texto);margin-left:4px;">(reduzida)</span>
                     {% endif %}
                 </div>
             </div>
-            <div class="info-card" style="grid-column:span 2;">
+            <div class="info-card" style="grid-column: 1 / -1;">
                 <div class="info-label">Tarifa Dinâmica Aplicada</div>
                 <div class="info-value" style="font-size:0.88rem;">{{ sessao.tarifa_label }}</div>
             </div>
@@ -641,7 +629,7 @@ tbody tr {
         <div class="cost-grid">
 
             <div class="cost-main">
-                <div class="cost-label">Total Cobrado</div>
+                <div class="cost-label">Previsão de custo</div>
                 <div class="cost-value {% if sessao.sessao_cruza_pico %}peak{% endif %}">
                     R$&nbsp;{{ "%.2f"|format(sessao.custo_final)|replace('.', ',') }}
                 </div>
@@ -791,6 +779,8 @@ tbody tr {
                     <div class="info-value">
                         {% if sessao.tipo_usuario == 'A' %}
                             Assinante <span class="badge badge-vip">-{{ sessao.desconto_assinante_pct }}%</span>
+                        {% elif sessao.tipo_usuario == 'C' %}
+                            Corporativo <span class="badge badge-vip">-10%</span>
                         {% else %}
                             Padrão
                         {% endif %}
@@ -887,6 +877,13 @@ tbody tr {
                 <span class="tarifa-label">Desconto assinante</span>
                 <span class="tarifa-value" style="color: var(--cor-livre-texto);">
                     -{{ sessao.desconto_assinante_pct }}%
+                </span>
+            </div>
+            {% elif sessao.tipo_usuario == 'C' %}
+            <div class="tarifa-row">
+                <span class="tarifa-label">Desconto corporativo</span>
+                <span class="tarifa-value" style="color: var(--cor-livre-texto);">
+                    -10%
                 </span>
             </div>
             {% endif %}
@@ -1027,7 +1024,7 @@ tbody tr {
         </a>
     </div>
 
-</div>{# /container #}
+</main>{# /container #}
 {% endblock %}
 
 
@@ -1109,7 +1106,7 @@ tbody tr {
         setTimeout(function () {
             if (isPico) {
                 sistema.show(
-                    '<strong>Sessão com horário de pico.</strong> Tarifa +50% aplicada ' +
+                    '<strong>Previsão com horário de pico.</strong> Tarifa +50% aplicada ' +
                     'proporcionalmente nos <strong>{{ sessao.minutos_em_pico }} min</strong> ' +
                     'dentro do período de pico (18:00–22:59).',
                     'warning',
@@ -1117,7 +1114,7 @@ tbody tr {
                 );
             } else {
                 sistema.show(
-                    'Sessão concluída com tarifa normal. ✓',
+                    'Recarga iniciada. Previsão calculada com a tarifa normal.',
                     'success',
                     12000
                 );

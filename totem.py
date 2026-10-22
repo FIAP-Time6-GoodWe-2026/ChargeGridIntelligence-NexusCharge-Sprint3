@@ -26,8 +26,9 @@ import time
 from typing import Dict, Optional
 
 # Conector que o totem controla quando ninguém configurou outro. É um conector
-# livre na demonstração (Faria Lima), para o fluxo começar sem preparo.
-CONECTOR_PADRAO: str = "P2-C1"
+# livre na demonstração para o fluxo começar sem preparo: o Faria Lima abre
+# com carros e o Paulista C1–C3 são as portas do totem físico (ESP32).
+CONECTOR_PADRAO: str = "P1-C4"
 
 # Quanto tempo o QR de login vale. Curto de propósito: é um QR exibido numa
 # tela pública, e quem o fotografasse não deveria poder usá-lo depois.
@@ -131,4 +132,11 @@ def consumir(token: str) -> Optional[str]:
         }
         del _pareamentos[token]
         return p["usuario"]
+
+
+def reset() -> None:
+    """Limpa todos os pareamentos ativos e confirmados (usado no demo-reset)."""
+    with _trava:
+        _pareamentos.clear()
+        _pareamentos_confirmados.clear()
 

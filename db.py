@@ -120,8 +120,10 @@ CREATE TABLE IF NOT EXISTS veiculos (
 
 def _conn() -> sqlite3.Connection:
     """Abre uma conexão com `row_factory` que devolve linhas indexáveis por nome."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -154,7 +156,7 @@ def init() -> None:
     Idempotente: pode ser chamada a cada import do módulo `app` sem efeito
     colateral, inclusive nos reloads automáticos do Flask em modo debug.
     """
-    with _conn() as conn:
+    with contextlib.closing(_conn()) as conn, conn:
         _migrar_reservas(conn)
         conn.executescript(SCHEMA)
 
@@ -194,19 +196,19 @@ def execute(sql: str, params: Iterable[Any] = ()) -> int:
     Returns:
         Número de linhas afetadas.
     """
-    with _conn() as conn:
+    with contextlib.closing(_conn()) as conn, conn:
         return conn.execute(sql, tuple(params)).rowcount
 
 
 def query_one(sql: str, params: Iterable[Any] = ()) -> Optional[sqlite3.Row]:
     """Executa um SELECT e devolve a primeira linha, ou None."""
-    with _conn() as conn:
+    with contextlib.closing(_conn()) as conn:
         return conn.execute(sql, tuple(params)).fetchone()
 
 
 def query_all(sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
     """Executa um SELECT e devolve todas as linhas."""
-    with _conn() as conn:
+    with contextlib.closing(_conn()) as conn:
         return conn.execute(sql, tuple(params)).fetchall()
 
 
@@ -217,7 +219,7 @@ def reset() -> None:
     Usado pelo atalho de demonstração e pelos testes. Não remove o arquivo,
     apenas esvazia — assim quem já tem uma conexão aberta não quebra.
     """
-    with _conn() as conn:
+    with contextlib.closing(_conn()) as conn, conn:
         for tabela in ("transacoes", "carteira", "reservas", "sessoes",
                        "veiculos"):
             conn.execute(f"DELETE FROM {tabela}")

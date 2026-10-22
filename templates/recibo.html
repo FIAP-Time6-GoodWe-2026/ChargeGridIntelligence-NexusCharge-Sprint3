@@ -46,15 +46,16 @@
     display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4);
     margin-top: var(--sp-4);
-    background: var(--cor-info-bg);
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.28);
     border-radius: var(--r-md);
     color: var(--cor-livre-texto);
     font-size: var(--fs-md);
     font-weight: var(--fw-semibold);
     text-align: center;
 }
-.cashback-faixa .nc-simbolo { width: 22px; height: 22px; flex-shrink: 0; }
-.cashback-faixa span { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.cashback-faixa .nc-simbolo { width: 22px; height: 22px; flex-shrink: 0; vertical-align: -4px; }
+.cashback-faixa span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .cashback-faixa .valor { font-variant-numeric: tabular-nums; }
 
 .detalhes { margin-top: var(--sp-5); }
@@ -124,7 +125,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container estreito">
+<main class="container estreito">
     <div class="card">
 
         <div class="recibo-topo">
@@ -146,8 +147,8 @@
 
             {% if r.cashback_nc > 0 %}
             <div class="cashback-faixa">
-                <svg class="nc-simbolo" aria-hidden="true"><use href="#moeda-nexus"/></svg>
                 <span>
+                    <svg class="nc-simbolo" aria-hidden="true"><use href="#moeda-nexus"/></svg>
                     <span class="valor" id="cashbackValor"
                           data-alvo="{{ '%.2f'|format(r.cashback_nc) }}">0,00</span>
                     NexusCoin de cashback creditados
@@ -208,7 +209,7 @@
             Salvar comprovante em PDF
         </button>
     </div>
-</div>
+</main>
 {% endblock %}
 
 {% block scripts %}

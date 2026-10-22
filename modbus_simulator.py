@@ -200,6 +200,13 @@ class ModbusSimulator:
         self._total_frames: int = 0
         self._reg_map:     Dict[int, int]    = {}   # espelho do estado dos registradores
 
+    def reset(self) -> None:
+        """Limpa o buffer de frames e o mapa de registradores em memória."""
+        self._tid = 0
+        self._frame_log.clear()
+        self._total_frames = 0
+        self._reg_map.clear()
+
     # ------------------------------------------------------------------
     # API pública — eventos do ciclo de sessão
     # ------------------------------------------------------------------

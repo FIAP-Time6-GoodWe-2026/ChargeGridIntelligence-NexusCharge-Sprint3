@@ -13,3 +13,7 @@ RELATORIO_SPRINT3_DSA.*
 
 # Pacote de entrega, gerado a partir do que ja esta versionado aqui
 *.zip
+
+# IDE e configuracao local do totem (senha do Wi-Fi e token)
+.idea/
+firmware/**/config.h

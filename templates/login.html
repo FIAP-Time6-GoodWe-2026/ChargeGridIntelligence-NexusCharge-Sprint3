@@ -183,7 +183,7 @@ body { animation: none; }            /* login não precisa de animação de entr
     font-weight: var(--fw-semibold);
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: var(--cor-primaria);
+    color: var(--cor-primaria-texto);
     background: rgba(192, 0, 0, 0.08);
     padding: 5px 12px;
     border-radius: var(--r-pill);
@@ -199,7 +199,7 @@ body { animation: none; }            /* login não precisa de animação de entr
 }
 [data-theme="dark"] .login-badge-app {
     background: rgba(225, 20, 20, 0.14);
-    color: #FF5A5A;
+    color: var(--cor-primaria-texto);
     border-color: rgba(225, 20, 20, 0.25);
 }
 
@@ -263,7 +263,7 @@ body { animation: none; }            /* login não precisa de animação de entr
     border-radius: 12px;
     background: var(--cor-input-bg);
     color: var(--cor-texto);
-    font-size: var(--fs-md);
+    font-size: 1rem;
     transition: border-color var(--t-base) var(--ease),
                 box-shadow var(--t-base) var(--ease),
                 background-color var(--t-base) var(--ease);
@@ -280,7 +280,7 @@ body { animation: none; }            /* login não precisa de animação de entr
     box-shadow: 0 0 0 3px rgba(192, 0, 0, 0.18);
 }
 .campo-wrapper:focus-within .campo-icon {
-    color: var(--cor-primaria);
+    color: var(--cor-primaria-texto);
 }
 
 /* ── Botão Entrar Premium ────────────────────────────────────────────────── */
@@ -339,11 +339,14 @@ body { animation: none; }            /* login não precisa de animação de entr
 .demo-recolhido > summary::-webkit-details-marker { display: none; }
 .demo-recolhido > summary:hover {
     color: var(--cor-texto);
+    background: var(--cor-borda);
+}
+[data-theme="dark"] .demo-recolhido > summary:hover {
     background: rgba(255, 255, 255, 0.08);
 }
 .demo-recolhido > summary svg {
     width: 14px; height: 14px;
-    transition: transform var(--dur-rapida, .18s) ease;
+    transition: transform var(--t-fast, .18s) ease;
 }
 .demo-recolhido[open] > summary svg { transform: rotate(180deg); }
 .demo-recolhido[open] > summary { margin-bottom: var(--sp-3); }

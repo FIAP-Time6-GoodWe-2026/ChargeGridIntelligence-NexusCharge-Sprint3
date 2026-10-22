@@ -27,7 +27,7 @@ ele paga**.
 | **Modo App / Modo Totem** | Alternância com um clique entre experiência mobile para o motorista e interface vertical para totens físicos de autoatendimento touchscreen. |
 | **Gestão de Veículos** | Suporte a múltiplos veículos por conta, cadastro de veículos avulsos e bloqueio estrito contra recargas simultâneas para a mesma placa. |
 | **Totem com Pareamento** | Login no totem via QR Code dinâmico (ISO/IEC 18004 na stdlib) lido pelo smartphone, liberando o conector sem digitação de senha pública. |
-| **Recarga sem cadastro (Totem)** | Visitante sem conta informa a placa no totem e autoriza um sinal de R$ 50,00 via Pix. O conector é liberado na hora; no término, o sinal abate o consumo e o excedente é estornado automaticamente. Se ultrapassar R$ 50,00, o saldo residual pode ser pago via Pix no celular ou totem. |
+| **Recarga sem cadastro (Totem)** | Visitante sem conta informa só a placa e paga um sinal de R$ 50,00 (cartão por aproximação ou Pix). A recarga é **pré-paga**: termina sozinha ao atingir o valor pago. Pode ser encerrada antes no totem ou no celular (QR de acompanhamento, sem app): o consumo sai do sinal e o restante é devolvido. |
 | **Acompanhamento Móvel Omnichannel** | Monitoramento da recarga em tempo real pelo smartphone via QR Code do totem tanto para contas cadastradas (`/celular/parear/<token>`) quanto para visitantes avulsos (`/avulso/<token>`), com telemetria viva, encerramento remoto e quitação que libera o conector na hora. |
 | **Sincronização Totem ⇄ Celular** | O totem monitora ativamente pagamentos realizados pelo smartphone, transitando automaticamente da tela de cobrança para o comprovante final sem exigir interação física no display público. |
 | **NexusCoin** | Moeda interna com paridade 1 NC = R$ 1,00, **10% de cashback** ao pagar a recarga com ela, extrato auditável e recarga por Pix ou cartão. |
@@ -69,7 +69,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 287 testes
+pytest -q          # 413 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -86,7 +86,7 @@ saldos, para não ser preciso procurar a senha no meio de uma apresentação:
 ║   amanda  assinante        100,00 NC                     ║
 ║   allan   corporativo        5,00 NC                     ║
 ║   jose    padrão             0,00 NC                     ║
-║   luiz    assinante         50,00 NC                     ║
+║   luiz    assinante        150,00 NC                     ║
 ║   mylon   operador      10.000,00 NC                     ║
 ╚═══════════════════════════════════════════════════════════╝
 ```
@@ -107,11 +107,11 @@ Senha de todas: **`1234`**. Cada conta demonstra um caminho diferente do produto
 
 | Usuário | Nome | Categoria | Saldo inicial | Veículos | Para que serve na demonstração |
 |---|---|---|---:|---|---|
-| `amanda` | Amanda Ribeiro | Assinante (−15%) | 100,00 NC | `AMA1A11`, `RIO4F22` | Caminho feliz no Modo App: inicia com recarga em andamento no conector C4 da Paulista (`AMA1A11`), encerra, paga com NexusCoin, recebe 10% de cashback e inicia nova recarga com seu segundo carro (`RIO4F22`) |
-| `allan` | Allan Souza | Corporativo (−10%) | 5,00 NC | `ALL2C33` | Saldo insuficiente: bloqueio da reserva, recarga da carteira e retomada do pagamento |
-| `jose` | José Fino | Padrão | 0,00 NC | `JOS3D44` | Carteira zerada: estado vazio do extrato, tarifa cheia e pagamento por Pix ou cartão |
-| `luiz` | Luiz Otávio | Assinante (−15%) | 50,00 NC | `LUZ9B87` | Cartão salvo (Visa final 4821); demonstração do pareamento celular-totem via QR Code e recarga no totem físico |
-| `mylon` | Mylon Freixo | Operador | 10.000,00 NC | `ADM0X00` | Painel administrativo (`/admin`), controle de demanda/throttle ao vivo, log Modbus, suíte de testes e exportação CSV |
+| `amanda` | Amanda Ribeiro | Assinante (−15%) | 100,00 NC | `BRA2E19`, `RIO4F22` | Caminho feliz no Modo App: inicia com recarga em andamento no conector C4 da Faria Lima (`BRA2E19`), encerra, paga com NexusCoin, recebe 10% de cashback e inicia nova recarga com seu segundo carro (`RIO4F22`) |
+| `allan` | Allan Souza | Corporativo (−10%) | 5,00 NC | `SPA7C31` | Saldo insuficiente: bloqueio da reserva, recarga da carteira e retomada do pagamento |
+| `jose` | José Fino | Padrão | 0,00 NC | `JSF1A23` | Carteira zerada: estado vazio do extrato, tarifa cheia e pagamento por Pix ou cartão |
+| `luiz` | Luiz Otávio | Assinante (−15%) | 150,00 NC | `LUZ9B87` | Cartão salvo (Visa final 4821); demonstração do pareamento celular-totem via QR Code e recarga no totem físico |
+| `mylon` | Mylon Freixo | Operador | 10.000,00 NC | `MYL0N26` | Painel administrativo (`/admin`), controle de demanda/throttle ao vivo, log Modbus, suíte de testes e exportação CSV |
 
 Na tela de login, clicar em uma conta preenche e envia o formulário.
 
@@ -119,31 +119,24 @@ Na tela de login, clicar em uma conta preenche e envia o formulário.
 
 ---
 
-## 🧭 Roteiro de demonstração (≈ 4–5 min)
+## 🧭 Roteiro de demonstração (≈ 5 min, ao vivo)
 
-### Parte 1 — Modo App (Motorista logado no smartphone)
-1. **Entrar como `amanda`** → a tela inicial do Modo App vai direto ao mapa interativo com os três postos (Berrini lotado, Paulista em throttle).
-2. **Abrir o posto Paulista (P1)** → Amanda encontra a **própria recarga em andamento** no conector C4 (`AMA1A11`).
-3. **Reservar o conector C5** → modal com os termos, R$ 10,00 de sinal debitados da carteira, countdown de 15 minutos em tempo real. Dar F5: o countdown **retoma de onde estava**.
-4. **Encerrar a recarga do C4** → tela de pagamento com energia medida em tempo real, tarifa fixada na conexão e detalhamento de consumo.
-5. **Pagar com NexusCoin** → saldo debitado com precisão, crédito instantâneo de **10% de cashback**, e recibo com contador animado do crédito.
-6. **Nova recarga com segundo carro** → Amanda seleciona o conector livre e escolhe seu segundo veículo cadastrado (`RIO4F22`), demonstrando a flexibilidade da garagem multi-veículo.
-7. **Entrar como `allan`** (5 NC) → tentar reservar conector: bloqueio por saldo insuficiente com aviso de valor faltante e atalho para recarga da carteira.
+O roteiro completo da apresentação (falas, passo a passo dos aparelhos e plano B)
+fica fora do repositório, na pasta `Pitch GoodWe\Apresentacao ao vivo`. Resumo:
 
-### Parte 2 — Modo Totem (Terminal de autoatendimento no posto)
-8. **Alternar para Modo Totem** (botão no topo ou `/modo/totem`) → interface vertical touchscreen específica para terminais físicos de recarga.
-9. **Fluxo com Conta (Pareamento via QR Code)**:
-   - Clicar em "Entrar com QR Code". O totem gera um QR dinâmico de pareamento (ISO/IEC 18004).
-   - Simular leitura pelo smartphone (`/celular/parear/<token>`) autenticado como `luiz`.
-   - O totem reconhece o pareamento instantaneamente via polling reativo, exibe as boas-vindas a Luiz Otávio, permite escolher o conector e o carro cadastrado (`LUZ9B87`), iniciando a recarga sem expor senhas na tela pública.
-10. **Fluxo sem Conta / Visitante (Sinal via Pix)**:
-    - No totem, selecionar "Carregar sem conta".
-    - Informar a placa visitante e o conector desejado.
-    - O totem gera um Pix para autorização do sinal de R$ 50,00.
-    - Ao confirmar, o conector é liberado imediatamente. Ao encerrar a recarga, o sinal abate o valor consumido e o saldo restante é estornado automaticamente na mesma operação.
+### Parte 1 — App do motorista (`amanda`, só software)
+1. **Mapa de postos** → cada posto tem uma cor: Paulista verde (livre), Faria Lima amarelo (potência dividida), Berrini vermelho (lotado).
+2. **Faria Lima → C5 (VIP) → Iniciar Recarga VIP** → o BYD (`BRA2E19`) aparece bloqueado como "Carregando em P2-C4"; o Kwid (`RIO4F22`) é aprovado.
+3. **Voltar ao posto** → a potência foi redividida por prioridade: 6,0 · 6,0 · 6,6 · 7,2 · 7,2 kW (33 kW no total).
+4. **Encerrar o C5 → pagar com NexusCoin** → 10% de cashback. Com conta, o conector só é liberado depois do pagamento.
+5. **Painel do operador** (`mylon`, `/dashboard`) → "Decisões de potência" registra a redistribuição e o rebalanceamento. A lista de sessões se atualiza sozinha.
 
-### Parte 3 — Painel do Operador
-11. **Entrar como `mylon`** → acessar `/admin`: visão panorâmica de potência dos postos, monitoramento de throttle ao vivo no `/dashboard`, auditoria de tráfego de frames industriais no `/modbus-log`, execução da suíte no `/testes` e exportação do histórico em `/admin/export.csv`.
+### Parte 2 — Totem do posto (`/modo/totem`, abre no Paulista C4, só software)
+6. **Com conta:** "Entrar com conta existente" → QR → o celular confirma sem senha → "Olá, Luiz" → iniciar → encerrar e pagar no totem (cartão por aproximação) ou no celular.
+7. **Sem conta:** placa → sinal de R$ 50,00 → QR "Acompanhe no Celular" → encerrar pelo celular: o restante do sinal é devolvido.
+
+### Parte 3 — Totem físico (ESP32, portas 1–3 da Paulista)
+8. Rodapé do totem → **Totem físico (ESP32)** → plugar o celular-carro na porta 1 → login pelo QR → potência medida pelo sensor → tirar o cabo → o totem pede o pagamento.
 
 ---
 
@@ -177,9 +170,9 @@ qr.py                   QR Code simulado em SVG (Pix)
    ↑
 app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
-templates/              27 telas e 3 parciais (Modo App e Modo Totem)
+templates/              29 telas e 3 parciais (Modo App e Modo Totem)
 static/                 favicon
-test_chargegrid.py      287 testes automatizados
+test_chargegrid.py      413 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -291,7 +284,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | POST | `/celular/parear/<token>/encerrar` | Encerra a recarga pelo smartphone e direciona para quitação no app |
 | GET/POST | `/totem/veiculo` | Seleção de conector e veículo cadastrado na tela do totem |
 | GET/POST | `/totem/sem-conta` | Identificação por placa e conector para visitante sem cadastro |
-| GET/POST | `/totem/sem-conta/pagar` | Autorização de sinal de R$ 50,00 via Pix para liberação |
+| GET/POST | `/totem/sem-conta/pagar` | Pagamento do sinal de R$ 50,00 (cartão por aproximação ou Pix) que libera a recarga pré-paga |
 | GET | `/totem/carregando` | Monitoramento vertical da recarga em andamento no conector do totem |
 | GET | `/totem/carregando/status` | Polling dinâmico de telemetria exibido no display do totem |
 | POST | `/totem/encerrar` | Encerra recarga diretamente na tela do totem |
@@ -303,7 +296,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | POST | `/avulso/<token>/encerrar` | Encerra a recarga avulsa pelo smartphone do visitante |
 | POST | `/avulso/<token>/pagar-excedente` | Pagamento móvel do excedente (> R$ 50) liberando conector na hora |
 
-### Operador (Staff)
+### Operador (Staff) e Integração IoT
 | Método | Rota | Função |
 |---|---|---|
 | GET | `/admin` | Hub central do operador |
@@ -317,6 +310,47 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 | POST | `/sessao/<id>/liberar` | Desbloqueio forçado de conector retido |
 | POST | `/admin/demo-reset` | Restauração completa do estado de demonstração |
 | GET | `/api/status` | Polling JSON (5 s) de telemetria e potência dos postos |
+| POST | `/api/energia` | Integração IoT solar (Raspberry Pi Pico W): aplica orçamento dinâmico bidirecional |
+
+---
+
+## 🔌 Totem físico (ESP32) — protótipo de bancada
+
+Um ESP32 com 3 sensores de corrente (INA219) e 3 LEDs de semáforo simula o
+posto Paulista (P1): as portas físicas 1–3 são os conectores `P1-C1..C3`.
+Plugar um aparelho abre a recarga; desplugar encerra. Tudo roda sem alterar o
+fluxo do app — o ESP32 só envia leituras para `POST /api/esp32/portas`.
+
+**Como ligar**
+1. Copie `firmware/totem_esp32/config.example.h` para `config.h` (fica fora do
+   Git) e preencha `WIFI_SSID`, `WIFI_SENHA`, `SERVIDOR_IP` (o IP da linha
+   "Rede" que o servidor mostra ao iniciar) e `TOKEN_ESP32`.
+2. Envie `totem_esp32.ino` ao ESP32 pela Arduino IDE (placa e Wi-Fi **2,4 GHz**).
+3. Suba o servidor (`python3 app.py`). Se o IP do banner sair errado, force com
+   `CHARGEGRID_HOST_IP=<ip>`. Para trocar o token de desenvolvimento, defina
+   `CHARGEGRID_ESP32_TOKEN` (o mesmo valor do `config.h`).
+4. Abra `/modo/totem` em **um navegador** e o app/operador em **outro**: o modo
+   é guardado em cookie, então um navegador não faz os dois ao mesmo tempo.
+5. Em `/totem/fisico` (atalho "Totem físico (ESP32)" no rodapé do totem) a tela
+   acompanha as portas. Ao plugar, o motorista entra pelo QR (o celular confirma
+   com a própria conta, sem senha); quem não tem conta paga antes (pré-pago).
+   "Voltar ao totem" retorna ao totem comum, que por padrão controla o
+   **Paulista C4** — um conector só de software, fora das portas físicas.
+
+**Regras do protótipo**
+- Presença: corrente ≥ 20 mA, decidida no servidor (`esp32.LIMIAR_PRESENCA_MA`);
+  desplugue confirmado após 3 leituras seguidas.
+- Potência medida: o ESP32 envia tensão e corrente; **1 W medido vale 1 kW** na
+  aplicação (celulares no lugar dos carros), limitado a 11 kW e à potência
+  alocada. É essa potência que acumula energia e custo. Sem medição por mais de
+  10 s (ESP32 offline), a recarga acumula 0 kW.
+- Semáforo do posto: verde (< 50 % da potência), amarelo (≥ 50 %), vermelho (cheio).
+- Com conta: desplugar encerra a recarga e o totem vai para o pagamento. O
+  conector **só é liberado depois de pago**; até lá o valor aparece como
+  pendente na Carteira (acima de R$ 100 ou 7 dias, novas recargas ficam bloqueadas).
+- Página de diagnóstico do ESP32: `/esp32`.
+
+Alterações feitas para isso e pontos em aberto: `docs/PONTOS_PARA_O_GRUPO.md`.
 
 ---
 
@@ -326,7 +360,7 @@ carregar por um minuto seria uma forma de mover dinheiro de graça.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**287 testes** em 32 classes. A suíte roda contra um banco temporário por teste,
+**413 testes** em 47 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
@@ -338,10 +372,10 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | Regressão e Auditoria | Não-reincidência dos bugs corrigidos |
 | Conector VIP | Exclusividade do conector C5 |
 | **Autenticação** | Guarda de acesso, staff × usuário, open redirect |
-| **Modo App e Modo Totem** | Alternância de modos, isolamento de rotas e consistência de sessão |
+| **Modo App e Modo Totem** | Alternância de modos, isolamento de modos e consistência de sessão |
 | **Veículos e Integridade** | Múltiplos carros por conta, placa única ativa e cadastro avulso |
 | **Totem com Conta** | Pareamento via QR Code, ciclo de vida do token e sessão remota |
-| **Totem sem Conta** | Sinal de R$ 50,00 via Pix, liberação sem senha, acerto e estorno |
+| **Totem sem Conta** | Sinal de R$ 50,00 pré-pago, encerrar no totem ou no celular devolve o restante |
 | **Carteira** | Saldos iniciais, débito/crédito, saldo insuficiente, extrato |
 | **Reserva** | Débito do sinal, unicidade, cancelamento, expiração |
 | **Billing** | Abatimento do sinal, teto do abatimento, cashback |
@@ -354,13 +388,14 @@ então executá-la **não altera o `chargegrid.db` da demonstração**.
 | **Memória × histórico** | Os rótulos que separam sessões desta execução do histórico arquivado, e a consulta única que substituiu uma por sessão |
 | **Tarifa com fonte única** | `pricing_engine` reexporta as constantes de `logica_recarga` em vez de redeclará-las |
 | **Robustez e Concorrência** | Isolamento de sinal de reserva concluída, exigência de quitação de excedente avulso > R$ 50, estorno automático ≤ R$ 50, proteção contra clock skew em `duration_seconds`, injeção de cabeçalhos OWASP, bloqueio de backslash open-redirect, páginas de erro 404/500 customizadas e sincronização omnichannel totem-celular |
+| **Melhorias Comerciais e IoT** | Orçamento bidirecional (`aplicar_orcamento`), endpoint `POST /api/energia` (Pico W em watts e kW), rebalanceamento automático no encerramento pelo totem, restauração completa em memória e banco no `demo-reset` |
 
 ---
 
 ## 🧮 Estruturas de Dados e Algoritmos
 
-A entrega da disciplina **não é um programa separado**: os algoritmos pedidos
-foram implementados dentro do sistema e rodam em produção.
+Os algoritmos de busca e ordenação foram implementados diretamente no núcleo
+do sistema e operam em produção tanto nas rotas web quanto no terminal.
 
 | Algoritmo | Big-O | Onde o sistema usa |
 |---|:-:|---|
@@ -399,15 +434,16 @@ python menu.py   # menu interativo, 7 opções
 A opção 6 mede busca e ordenação sobre a coleção real, em vários tamanhos de
 entrada. Com 180 sessões no banco:
 
-| n | busca sequencial | busca binária | bubble | n(n−1)/2 | insertion | insertion já ordenada |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| 10 | 10 | 4 | 45 | 45 | 32 | 9 |
-| 50 | 50 | 6 | 1.225 | 1.225 | 678 | 49 |
-| 180 | 180 | 8 | 16.110 | 16.110 | 7.933 | 179 |
+| n | busca sequencial | busca binária | bubble | n(n−1)/2 | insertion | insertion já ordenada | merge O(n log n) |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 10 | 10 | 4 | 45 | 45 | 32 | 9 | 23 |
+| 50 | 50 | 6 | 1.225 | 1.225 | 678 | 49 | 222 |
+| 180 | 180 | 8 | 16.110 | 16.110 | 7.933 | 179 | 1.116 |
 
-A coluna do bubble é idêntica à fórmula fechada em todas as linhas, e a do
+A coluna do bubble é idêntica à fórmula fechada em todas as linhas, a do
 insertion em lista já ordenada é exatamente n−1 — o melhor caso linear que
-justifica o insertion no `rebalance`.
+justifica o insertion no `rebalance` — e o `merge_sort` mantém crescimento
+garantido O(n log n) na ordenação de tabelas completas no `/relatorio`.
 
 A análise completa, com o trecho de código que provoca o crescimento de cada
 algoritmo, está no **`RELATORIO_SPRINT3_DSA.pdf`**, que acompanha o pacote

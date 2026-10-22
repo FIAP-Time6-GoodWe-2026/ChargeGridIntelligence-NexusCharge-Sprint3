@@ -30,7 +30,7 @@ Onde o sistema usa cada algoritmo
     merge_sort        → ordenar_por() → cabeçalhos da tabela do /relatorio
                         menu.py, opções 4 e 6
     bubble_sort       → menu.py, opção 4
-    estatisticas      → menu.py, opção 5
+    estatisticas      → /relatorio (relatorio_consolidado) e menu.py, opção 5
 
 Contagem de comparações
 -----------------------

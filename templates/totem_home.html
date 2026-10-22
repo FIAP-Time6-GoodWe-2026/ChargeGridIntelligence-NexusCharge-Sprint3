@@ -45,7 +45,7 @@
     {% else %}
     <a class="tt-btn secundario tt-btn-duplo" href="{{ url_for('totem_sem_conta') }}">
         Usar totem sem conta
-        <span class="tt-btn-sub">Sinal de R$ {{ caucao | brl }}, com devolução do que sobrar</span>
+        <span class="tt-btn-sub">Pré-pago de R$ {{ caucao | brl }}: a recarga vai até esse valor</span>
     </a>
     {% endif %}
 </div>
@@ -54,6 +54,10 @@
 {% block totem_rodape %}
 <footer class="tt-rodape">
     <span>NexusCharge · ChargeGrid Intelligence</span>
-    <a href="{{ url_for('totem_configurar') }}">Configurar totem</a>
+    <span>
+        <a href="{{ url_for('totem_fisico') }}">Totem físico (ESP32)</a>
+        &nbsp;·&nbsp;
+        <a href="{{ url_for('totem_configurar') }}">Configurar totem</a>
+    </span>
 </footer>
 {% endblock %}

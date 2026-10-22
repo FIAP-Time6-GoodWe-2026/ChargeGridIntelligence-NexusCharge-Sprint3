@@ -70,6 +70,8 @@
         --cor-primaria-texto:    #C00000;   /* 6,48:1 sobre branco          */
         --cor-info-texto:        #2563EB;   /* 5,17:1                       */
         --cor-livre-texto:       #047857;   /* 5,48:1                       */
+        --cor-sucesso-texto:     #047857;   /* 5,48:1                       */
+        --cor-sucesso-bg:        rgba(16,185,129,0.12);
         --cor-vip-texto:         #B45309;   /* 5,02:1                       */
         --cor-ocupado-texto:     #B91C1C;   /* 6,47:1                       */
 
@@ -101,7 +103,7 @@
         --sp-5: 24px;  --sp-6: 32px;  --sp-7: 48px;  --sp-8: 64px;
 
         /* ── Raio                                                         */
-        --r-sm:  6px;  --r-md: 10px;  --r-lg: 16px;  --r-pill: 999px;
+        --r-sm:  6px;  --r-md: 10px;  --r-lg: 16px;  --r-xl: 20px;  --r-pill: 999px;
 
         /* ── Movimento — curto, porque o usuário está em fluxo            */
         --t-fast: 120ms;  --t-base: 180ms;  --t-slow: 260ms;
@@ -166,6 +168,8 @@
         --cor-primaria-texto:  #FF6B6B;   /* 5,27:1  (era 2,26:1 com #C00000) */
         --cor-info-texto:      #60A5FA;   /* 5,75:1  (era 2,83:1)             */
         --cor-livre-texto:     #34D399;   /* 7,61:1                           */
+        --cor-sucesso-texto:   #34D399;   /* 7,61:1                           */
+        --cor-sucesso-bg:      rgba(52,211,153,0.14);
         --cor-vip-texto:       #FBBF24;   /* 6,81:1                           */
         --cor-ocupado-texto:   #F87171;   /* 5,29:1                           */
         --cor-superficie-2:    #162032;
@@ -184,7 +188,15 @@
 
     /* As transições de tema são ativadas via .theme-ready (adicionada por JS
        após a primeira renderização) para evitar flash na carga inicial. */
-    body.theme-ready * {
+    body.theme-ready,
+    body.theme-ready .header,
+    body.theme-ready .card,
+    body.theme-ready .btn,
+    body.theme-ready .btn-bloco,
+    body.theme-ready input,
+    body.theme-ready select,
+    body.theme-ready .station-card,
+    body.theme-ready .charger-card {
         transition:
             background-color 0.28s ease,
             border-color     0.28s ease,
@@ -338,8 +350,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         background: rgba(255,255,255,0.15);
         border-radius: 8px;
         color: white;
@@ -380,8 +392,8 @@
     .header-btn svg { width: 14px; height: 14px; stroke: white; fill: none; }
 
     .theme-toggle {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         background: rgba(255,255,255,0.15);
         border: none;
         border-radius: 8px;
@@ -399,7 +411,7 @@
 
     /* Alternância App/Totem: mesmo desenho do botão de tema, ícone fixo. */
     .modo-toggle {
-        width: 40px; height: 40px; flex-shrink: 0;
+        width: 44px; height: 44px; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
         background: rgba(255,255,255,0.15);
         border-radius: 8px;
@@ -892,8 +904,8 @@
     .perfil-wrapper { position: relative; }
 
     .perfil-trigger {
-        width: 40px; height: 40px;
-        min-height: 40px;
+        width: 44px; height: 44px;
+        min-height: 44px;
         display: flex; align-items: center; justify-content: center;
         background: rgba(255,255,255,0.15);
         border: 1px solid rgba(255,255,255,0.25);
@@ -1027,6 +1039,10 @@
         .heroi { font-size: 2rem; }
         .perfil-menu { width: min(300px, calc(100vw - var(--sp-6))); }
         .header-actions .header-btn span { display: none; }
+        .campo input[type="text"],
+        .campo input[type="password"],
+        .campo input[type="number"],
+        .campo select { font-size: 1rem; }
 
         /* Cabeçalho no celular: título em até duas linhas, subtítulo em uma,
            e só tema + perfil à direita (painel e modo vão para o menu). */
@@ -1045,7 +1061,7 @@
         .header-address svg { display: none; }
         .header-actions > .header-btn,
         .header-actions > .modo-toggle { display: none; }
-        .back-button, .theme-toggle, .perfil-trigger { width: 40px; height: 40px; min-height: 40px; }
+        .back-button, .theme-toggle, .perfil-trigger { width: 44px; height: 44px; min-height: 44px; }
     }
     .perfil-so-celular { display: none !important; }
     @media (max-width: 640px) { .perfil-so-celular { display: flex !important; } }
@@ -1072,7 +1088,7 @@
             <!-- anel externo + nós da malha -->
             <circle cx="50" cy="50" r="44" fill="none"
                     stroke="var(--marca-vermelho, #C00000)" stroke-width="1.6"/>
-            <g fill="var(--marca-vermelho, #C00000)">
+            <g fill="var(--marca-vermelho, #C00000)" stroke="none">
                 <circle cx="50" cy="6"  r="2.6"/><circle cx="50" cy="94" r="2.6"/>
                 <circle cx="6"  cy="50" r="2.6"/><circle cx="94" cy="50" r="2.6"/>
                 <circle cx="19" cy="19" r="2"/>  <circle cx="81" cy="19" r="2"/>
@@ -1089,21 +1105,21 @@
             <!-- nó ativo na órbita -->
             <circle cx="74.7" cy="25.3" r="5.4" fill="none"
                     stroke="var(--marca-verde, #11B882)" stroke-width="1.2"/>
-            <circle cx="74.7" cy="25.3" r="3.4" fill="var(--marca-verde, #11B882)"/>
+            <circle cx="74.7" cy="25.3" r="3.4" fill="var(--marca-verde, #11B882)" stroke="none"/>
             <!-- disco e raio -->
-            <circle cx="50" cy="50" r="22" fill="var(--marca-vermelho, #C00000)"/>
+            <circle cx="50" cy="50" r="22" fill="var(--marca-vermelho, #C00000)" stroke="none"/>
             <path d="M54.5 32 L41 52.5 h7.5 L45.5 68 L59 47.5 h-7.5 z"
-                  fill="var(--marca-escuro, #12060A)"/>
+                  fill="var(--marca-escuro, #12060A)" stroke="none"/>
         </symbol>
 
         {# Versão compacta: só o disco e o raio. Os anéis orbitais somem abaixo
            de ~28px e viram ruído; este símbolo é o da moeda NexusCoin. #}
         <symbol id="moeda-nexus" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="46" fill="var(--marca-vermelho, #C00000)"/>
-            <circle cx="50" cy="50" r="46" fill="none"
-                    stroke="var(--marca-verde, #11B882)" stroke-width="4"/>
+            <circle cx="50" cy="50" r="46" fill="var(--marca-vermelho, #C00000)" stroke="none"/>
+            <circle cx="50" cy="50" r="43" fill="none"
+                    stroke="var(--marca-verde, #11B882)" stroke-width="6"/>
             <path d="M59 22 L34 56 h13 L41 78 L66 44 h-13 z"
-                  fill="#FFFFFF"/>
+                  fill="#FFFFFF" stroke="none"/>
         </symbol>
     </svg>
 
@@ -1317,9 +1333,7 @@
 
     // ==================================================================
     // RippleEffect — Onda de clique em elementos interativos
-    // A animação completa 100% independente de soltar o mouse.
-    // Para <a> que navegam na mesma aba: a navegação é atrasada 320ms
-    // para que o ripple seja visível antes de a página mudar.
+    // Navegação imediata em links <a> para resposta instantânea.
     // ==================================================================
     const RippleEffect = (function () {
         var RIPPLE_DURATION = 700; // ms — deve ser >= duração do @keyframes
@@ -1331,29 +1345,14 @@
             w.style.left = (clientX - rect.left) + 'px';
             w.style.top  = (clientY - rect.top)  + 'px';
             el.appendChild(w);
-            // Remove após a animação — independente de navegação
             setTimeout(function(){ if (w.parentNode) w.remove(); }, RIPPLE_DURATION);
         }
 
         function attach(el) {
-            // Ripple inicia no pointerdown para feedback imediato
             el.addEventListener('pointerdown', function (e) {
                 if (el.disabled) return;
                 createWave(el, e.clientX, e.clientY);
             });
-
-            // Para <a> que navegam na mesma aba: atrasa a navegação
-            // 320ms para o ripple ser visível antes de a página mudar.
-            if (el.tagName === 'A' && el.getAttribute('href')) {
-                el.addEventListener('click', function (e) {
-                    // Modificadores ou target externo: comportamento nativo
-                    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-                    if (el.target === '_blank') return;
-                    e.preventDefault();
-                    var href = el.href;
-                    setTimeout(function () { window.location.href = href; }, 320);
-                });
-            }
         }
 
         function init() {

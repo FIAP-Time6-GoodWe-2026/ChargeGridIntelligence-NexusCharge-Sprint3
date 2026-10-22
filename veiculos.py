@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple
 import db
 
 # Um carro por conta, e dois para a Amanda: o primeiro já está carregando no
-# P1-C4 quando o servidor sobe, o segundo fica livre para iniciar outra recarga.
+# P2-C4 quando o servidor sobe, o segundo fica livre para iniciar outra recarga.
 INICIAIS: Dict[str, List[Tuple[str, str]]] = {
     "amanda": [("BRA2E19", "BYD Dolphin"), ("RIO4F22", "Renault Kwid E-Tech")],
     "allan":  [("SPA7C31", "Volvo EX30")],

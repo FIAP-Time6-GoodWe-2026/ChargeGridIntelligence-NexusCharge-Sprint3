@@ -19,6 +19,7 @@ Regras do produto:
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from typing import Optional
 
@@ -96,7 +97,10 @@ def creditar(usuario: str, valor: float, tipo: str, descricao: str = "",
     Raises:
         ValueError : valor não positivo.
     """
-    valor = round(float(valor), 2)
+    bruto = float(valor)
+    if not math.isfinite(bruto):
+        raise ValueError("O valor a creditar deve ser positivo.")
+    valor = round(bruto, 2)
     if valor <= 0:
         raise ValueError("O valor a creditar deve ser positivo.")
 
@@ -138,7 +142,10 @@ def debitar(usuario: str, valor: float, tipo: str, descricao: str = "",
         ValueError          : valor não positivo.
         SaldoInsuficiente   : o débito deixaria o saldo negativo (nada é alterado).
     """
-    valor = round(float(valor), 2)
+    bruto = float(valor)
+    if not math.isfinite(bruto):
+        raise ValueError("O valor a debitar deve ser positivo.")
+    valor = round(bruto, 2)
     if valor <= 0:
         raise ValueError("O valor a debitar deve ser positivo.")
 

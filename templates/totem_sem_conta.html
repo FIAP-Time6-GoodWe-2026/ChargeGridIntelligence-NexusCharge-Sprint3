@@ -19,14 +19,14 @@
         <div class="tt-linha"><span>Sinal</span><strong>R$ {{ caucao | brl }}</strong></div>
         <div class="tt-linha"><span>Tarifa agora</span><strong>R$ {{ tarifa.tariff_kwh | brl }} / kWh</strong></div>
         <p class="tt-nota" style="margin-top: var(--sp-4)">
-            O sinal fica retido enquanto você carrega. No fim, o consumo é
-            descontado e <strong>a diferença volta para você</strong>. Se passar
-            de R$ {{ caucao | brl }}, o restante é cobrado no encerramento.
+            Recarga <strong>pré-paga</strong>: você paga R$ {{ caucao | brl }} agora e a
+            recarga termina sozinha ao atingir esse valor, sem cobrança extra.
+            Se retirar o cabo antes, <strong>o restante é devolvido</strong>.
         </p>
     </div>
 
     <div class="tt-acoes">
-        <button type="submit" class="tt-btn primario">Pagar sinal e iniciar recarga</button>
+        <button type="submit" class="tt-btn primario">Pagar e iniciar recarga</button>
         <a class="tt-btn discreto" href="{{ url_for('totem_home') }}">Voltar</a>
     </div>
 </form>

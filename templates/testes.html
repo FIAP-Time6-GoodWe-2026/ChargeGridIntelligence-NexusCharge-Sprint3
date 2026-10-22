@@ -142,9 +142,9 @@
     font-style: italic;
 }
 /* Colorização das linhas */
-.line-passed { color: #10B981; }
+.line-passed { color: var(--cor-livre-texto); }
 .line-failed { color: var(--cor-primaria-texto); font-weight: 600; }
-.line-error  { color: #F59E0B; }
+.line-error  { color: var(--cor-vip-texto); }
 .line-sep    { color: var(--cor-texto-secundario); }
 .line-meta   { color: var(--cor-texto-secundario); font-size: 0.72rem; }
 
@@ -240,7 +240,7 @@
                 <div class="stat-num errors" id="rErrors">0</div>
                 <div class="result-label">erros</div>
             </div>
-            <div style="margin-left:auto;font-size:1.4rem;" id="rEmoji">—</div>
+            <div style="margin-left:auto;display:flex;align-items:center;" id="rEmoji">—</div>
         </div>
     </div>
 
@@ -306,7 +306,7 @@ function runTests() {
     btn.disabled = true;
     btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Executando…';
 
-    log.innerHTML = '<span class="line-meta">▶ Iniciando pytest' + (selectedSuite ? ' :: ' + selectedSuite : '') + '…\n</span>';
+    log.innerHTML = '<span class="line-meta">Iniciando pytest' + (selectedSuite ? ' :: ' + selectedSuite : '') + '…\n</span>';
     summary.style.display = 'none';
     prog.style.display = 'block';
     fill.style.width = '0%';
@@ -339,7 +339,9 @@ function runTests() {
         document.getElementById('rPassed').textContent = data.passed;
         document.getElementById('rFailed').textContent = data.failed;
         document.getElementById('rErrors').textContent = data.errors;
-        document.getElementById('rEmoji').textContent = data.ok ? '✅' : '❌';
+        document.getElementById('rEmoji').innerHTML = data.ok
+            ? '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--cor-livre-texto)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--cor-ocupado-texto)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
         summary.className = 'result-summary ' + (data.ok ? 'ok' : 'fail');
         summary.style.display = 'block';
 

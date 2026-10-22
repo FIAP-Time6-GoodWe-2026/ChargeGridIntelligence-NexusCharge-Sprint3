@@ -310,8 +310,14 @@ def qr_svg(texto: str, rotulo: str = "QR Code") -> str:
         f"M{x + ZONA_SILENCIO} {y + ZONA_SILENCIO}h1v1h-1z"
         for y in range(m.lado) for x in range(m.lado) if m.mod[y][x]
     )
+    rotulo_seguro = (
+        rotulo.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
     return (
-        f'<svg viewBox="0 0 {lado} {lado}" role="img" aria-label="{rotulo}" '
+        f'<svg viewBox="0 0 {lado} {lado}" role="img" aria-label="{rotulo_seguro}" '
         f'shape-rendering="crispEdges" width="100%" height="100%">'
         f'<rect width="{lado}" height="{lado}" fill="#FFFFFF"/>'
         f'<path d="{caminho}" fill="#0B0B0B"/>'
