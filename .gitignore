@@ -17,3 +17,6 @@ RELATORIO_SPRINT3_DSA.*
 # IDE e configuracao local do totem (senha do Wi-Fi e token)
 .idea/
 firmware/**/config.h
+
+# Ambiente virtual criado pelo iniciar.command (macOS)
+.venv/

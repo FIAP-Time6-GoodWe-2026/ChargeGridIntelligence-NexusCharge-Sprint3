@@ -11,3 +11,6 @@
 # Binarios ficam intactos.
 *.png binary
 *.jpg binary
+
+# Script do macOS precisa de LF
+*.command text eol=lf

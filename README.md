@@ -62,6 +62,14 @@ e abre um menu:
 
 A opção 1 sobe o servidor e abre o navegador sozinho.
 
+### macOS
+
+Dois cliques em **`iniciar.command`**: o mesmo menu do `iniciar.bat`. As
+dependências ficam num ambiente virtual próprio (`.venv/`), criado na primeira
+vez. Se o macOS bloquear a abertura: botão direito → Abrir → Abrir. Se perguntar
+sobre conexões de entrada, clique em Permitir (o celular e o ESP32 acessam o Mac
+pela rede).
+
 ### Qualquer sistema
 
 ```bash
@@ -69,7 +77,7 @@ pip install flask pytest
 
 python app.py      # http://localhost:5001
 python menu.py     # menu de terminal (Estruturas de Dados)
-pytest -q          # 414 testes
+pytest -q          # 413 testes
 ```
 
 Ao iniciar, o terminal imprime o endereço e as contas de demonstração com os
@@ -147,6 +155,7 @@ negócio vive na camada web.
 
 ```
 iniciar.bat             Menu de inicialização para Windows (web · gestão · testes)
+iniciar.command         O mesmo menu para macOS
 
 models.py               Entidades e enums (ChargingSession, SessionStatus, UserType)
    ↑
@@ -172,7 +181,7 @@ app.py                  Camada web Flask — rotas, validação e orquestração
 menu.py                 Camada de terminal — mesmo sistema, sem Flask
 templates/              29 telas e 3 parciais (Modo App e Modo Totem)
 static/                 favicon
-test_chargegrid.py      414 testes automatizados
+test_chargegrid.py      413 testes automatizados
 seed_historico.py       Gerador de histórico sintético para as análises
 ```
 
@@ -362,7 +371,7 @@ Alterações feitas para isso e pontos em aberto: `docs/PONTOS_PARA_O_GRUPO.md`.
 pytest -v   # ou pela interface, em /testes
 ```
 
-**414 testes** em 47 classes. A suíte roda contra um banco temporário por teste,
+**413 testes** em 47 classes. A suíte roda contra um banco temporário por teste,
 então executá-la **não altera o `chargegrid.db` da demonstração**.
 
 | Suíte | Cobertura |
