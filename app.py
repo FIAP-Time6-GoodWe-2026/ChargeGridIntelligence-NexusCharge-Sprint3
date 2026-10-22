@@ -102,7 +102,8 @@ _TIPO_USUARIO_PT = {
 }
 
 
-# Potência que entra na conta (a medida pelo ESP32, quando há), para as telas.
+# Potência que entra na conta, para as telas: a simulada (alocada); a medida pelo
+# ESP32 só com CHARGEGRID_COBRANCA_MEDIDA=1.
 app.add_template_global(potencia_efetiva_kw, "potencia_kw")
 
 

@@ -114,10 +114,12 @@ Muda a regra original da recarga avulsa (caução de R$ 50 + acerto no fim).
 
 - ~~Semáforo reflete a ocupação do posto~~ (feito, firmware 0.2.0).
 - Conferir cobrança mínima (0,037 kWh cobrou R$ 2,00): regra do projeto original?
-- ~~Energia simulada a 11 kW fixos~~ (feito, firmware 0.3.0): o ESP32 envia
-  `tensao_v`; o servidor calcula W, usa 1 W = 1 kW (teto 11 kW e a alocada) e
-  acumula a energia pela potência medida (`measured_power_kw`, o mesmo campo
-  que o MeterValues do OCPP vai alimentar). Medição com mais de 10 s vale 0.
+- Medição de potência (firmware 0.3.0): o ESP32 envia `tensao_v` e o servidor
+  grava `measured_power_kw` (o mesmo campo que o MeterValues do OCPP vai
+  alimentar). **Decisão de 21/10: a cobrança continua na potência simulada de
+  11 kW** (demonstração previsível, telas coerentes com painel/semáforo/Modbus).
+  Cobrar pela medida (1 W = 1 kW, teto 11 kW e a alocada, medição com mais de
+  10 s vale 0) é opcional: `CHARGEGRID_COBRANCA_MEDIDA=1`.
 - ~~Presença decidida no firmware~~ (feito): o servidor decide pela corrente.
 - Queda de Wi-Fi do ESP32: aceita como limitação conhecida (as recargas seguem até alguém encerrar ou o cabo ser retirado e o ESP32 voltar).
 - Detecção por corrente: o ruído é ±0,4 mA e um celular com bateria cheia puxa ~0,7 mA, indistinguível de "desplugado" (limiar 20 mA mantido). Para a demonstração, usar celular com bateria baixa ou carga fixa (resistor ~100 Ω).

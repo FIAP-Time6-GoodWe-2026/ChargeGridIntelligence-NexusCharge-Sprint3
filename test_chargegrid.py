@@ -4283,6 +4283,9 @@ class TestPotenciaMedida:
     def _limpo(self, monkeypatch):
         monkeypatch.delenv("CHARGEGRID_ESP32_TOKEN", raising=False)
         import app as app_mod
+        import session_manager as smod
+        # Estes testes cobrem a cobrança pela potência medida (opcional).
+        monkeypatch.setattr(smod, "COBRANCA_PELA_MEDICAO", True)
         app_mod.portas_fisicas.limpar()
         app_mod.detector_desplugue.limpar()
         yield
@@ -4305,6 +4308,20 @@ class TestPotenciaMedida:
         assert self._enviar(client_anonimo, 1000.0).status_code == 200
         assert s.measured_power_kw == 5.0
         assert smod.potencia_efetiva_kw(s) == 5.0
+
+    def test_padrao_cobra_na_potencia_simulada(self, client_anonimo, monkeypatch):
+        import datetime
+        import session_manager as smod
+        monkeypatch.setattr(smod, "COBRANCA_PELA_MEDICAO", False)
+        A, s = self._sessao()
+        self._enviar(client_anonimo, 1000.0)                   # 5 W medidos
+        assert s.measured_power_kw == 5.0                      # a medição é gravada
+        assert smod.potencia_efetiva_kw(s) == s.allocated_power_kw
+        s.last_energy_update = datetime.datetime.now() - datetime.timedelta(seconds=36)
+        antes = s.energy_kwh
+        A.sm.accrue_energy(s)
+        esperado = s.allocated_power_kw * 36 / 3600
+        assert abs((s.energy_kwh - antes) - esperado) < 0.002
 
     def test_potencia_limitada_a_11_kw(self, client_anonimo):
         A, s = self._sessao()

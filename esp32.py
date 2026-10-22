@@ -40,8 +40,10 @@ o usa no semáforo offline) é ignorado.
 
 Celular no lugar do carro: 1 W medido na porta vale 1 kW na aplicação
 (`KW_POR_W_MEDIDO`). Um carregador de 5 W vira 5 kW; o teto de 11 kW do
-GW11K-HCA-20 é aplicado no SessionManager. Sem `tensao_v` (firmware antigo)
-não há potência medida e a energia segue a potência alocada.
+GW11K-HCA-20 é aplicado no SessionManager. A medição é gravada, mas só entra
+na cobrança com `CHARGEGRID_COBRANCA_MEDIDA=1`; por padrão a energia segue a
+potência alocada (simulada). Sem `tensao_v` (firmware antigo) também não há
+potência medida.
 """
 
 from __future__ import annotations

@@ -30,6 +30,7 @@ Persistência (Sprint 3):
 
 import datetime
 import logging
+import os
 from typing import Dict, List, Optional
 
 import algoritmos
@@ -51,17 +52,26 @@ POTENCIA_NOMINAL_KW: float   = 11.0  # GW11K-HCA-20
 # cobra energia que não foi medida.
 MEDICAO_VALIDA_S: float      = 10.0
 
+# Na bancada o celular faz o papel do carro, então o padrão é cobrar na potência
+# simulada (a alocada, até 11 kW): demonstração previsível e telas coerentes. A
+# medição do ESP32 continua sendo gravada e aparece no painel /esp32. Para
+# cobrar pela potência medida: CHARGEGRID_COBRANCA_MEDIDA=1 (lido ao iniciar).
+COBRANCA_PELA_MEDICAO: bool  = os.environ.get(
+    "CHARGEGRID_COBRANCA_MEDIDA", "").strip().lower() in ("1", "true", "sim")
+
 
 def potencia_efetiva_kw(session: ChargingSession,
                         agora: Optional[datetime.datetime] = None) -> float:
     """
     Potência que entra na conta de energia neste instante.
 
-    Sem medidor: a alocada pelo PowerManager. Com medidor: a medida, limitada
+    Padrão: a alocada pelo PowerManager (carro simulado de 11 kW). Com
+    `COBRANCA_PELA_MEDICAO` e medidor: a medida, limitada
     à alocada (o carregador nunca entrega acima do limite que recebeu) e zero
     se a última medição passou de `MEDICAO_VALIDA_S`.
     """
-    if session.measured_power_kw is None or session.measured_at is None:
+    if (not COBRANCA_PELA_MEDICAO or session.measured_power_kw is None
+            or session.measured_at is None):
         return session.allocated_power_kw
     agora = agora or datetime.datetime.now()
     if (agora - session.measured_at).total_seconds() > MEDICAO_VALIDA_S:

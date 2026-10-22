@@ -136,7 +136,7 @@ fica fora do repositório, na pasta `Pitch GoodWe\Apresentacao ao vivo`. Resumo:
 7. **Sem conta:** placa → sinal de R$ 50,00 → QR "Acompanhe no Celular" → encerrar pelo celular: o restante do sinal é devolvido.
 
 ### Parte 3 — Totem físico (ESP32, portas 1–3 da Paulista)
-8. Rodapé do totem → **Totem físico (ESP32)** → plugar o celular-carro na porta 1 → login pelo QR → potência medida pelo sensor → tirar o cabo → o totem pede o pagamento.
+8. Rodapé do totem → **Totem físico (ESP32)** → plugar o celular-carro na porta 1 → login pelo QR → recarga a 11 kW simulados (a medição do sensor fica em `/esp32`) → tirar o cabo → o totem pede o pagamento.
 
 ---
 
@@ -340,10 +340,12 @@ fluxo do app — o ESP32 só envia leituras para `POST /api/esp32/portas`.
 **Regras do protótipo**
 - Presença: corrente ≥ 20 mA, decidida no servidor (`esp32.LIMIAR_PRESENCA_MA`);
   desplugue confirmado após 3 leituras seguidas.
-- Potência medida: o ESP32 envia tensão e corrente; **1 W medido vale 1 kW** na
-  aplicação (celulares no lugar dos carros), limitado a 11 kW e à potência
-  alocada. É essa potência que acumula energia e custo. Sem medição por mais de
-  10 s (ESP32 offline), a recarga acumula 0 kW.
+- Potência medida: o ESP32 envia tensão e corrente e o servidor grava a
+  medição (visível em `/esp32`). **Por padrão a cobrança usa a potência simulada
+  do conector (até 11 kW)**, para a demonstração ser previsível. Para cobrar pela
+  medida, inicie com `CHARGEGRID_COBRANCA_MEDIDA=1`: então **1 W medido vale 1 kW**
+  (celulares no lugar dos carros), limitado a 11 kW e à alocada, e sem medição por
+  mais de 10 s a recarga acumula 0 kW.
 - Semáforo do posto: verde (< 50 % da potência), amarelo (≥ 50 %), vermelho (cheio).
 - Com conta: desplugar encerra a recarga e o totem vai para o pagamento. O
   conector **só é liberado depois de pago**; até lá o valor aparece como
